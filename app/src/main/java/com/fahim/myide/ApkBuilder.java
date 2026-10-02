@@ -99,6 +99,23 @@ public class ApkBuilder {
                 }
             }
 
+            // ---- Copy resolved Maven deps from cache ----
+            File depsFile = new File(projectRoot, ".myide/deps.txt");
+            if (depsFile.exists()) {
+                say("Copying Maven deps...");
+                File mavenDir = new File(workDir, "maven_libs");
+                mavenDir.mkdirs();
+                try {
+                    int n = MavenResolver.copyResolvedToDir(ctx, depsFile, mavenDir);
+                    if (n > 0) {
+                        say("Copied " + n + " Maven files");
+                        collectDeps(mavenDir, jarDeps, aarDeps);
+                    }
+                } catch (Exception e) {
+                    say("Maven copy failed: " + e.getMessage());
+                }
+            }
+
             collectDeps(new File(projectRoot, "libs"), jarDeps, aarDeps);
             collectDeps(new File(projectRoot, "app/libs"), jarDeps, aarDeps);
 
@@ -148,6 +165,12 @@ public class ApkBuilder {
                     File dest = new File(aarClassesDir, aar.getName().replace(".aar", "_classes.jar"));
                     copyFile(aarClasses, dest);
                     jarDeps.add(dest);
+                }
+
+                // native libs inside AAR
+                File aarJni = new File(extractDir, "jni");
+                if (aarJni.exists()) {
+                    say("AAR has JNI: " + aar.getName());
                 }
             }
 

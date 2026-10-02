@@ -308,6 +308,22 @@ public class MainActivity extends Activity {
     }
 
     // =========================================================
+    //  Libraries (Maven)
+    // =========================================================
+
+    private void showLibraries() {
+        if (projectRoot == null) {
+            toast("Pick or create a project first");
+            return;
+        }
+        new LibrariesDialog(this, projectRoot, new Runnable() {
+                @Override public void run() {
+                    toast("Dependencies updated");
+                }
+            }).show();
+    }
+
+    // =========================================================
     //  Logcat
     // =========================================================
 
@@ -354,6 +370,7 @@ public class MainActivity extends Activity {
         else if (id == R.id.action_undo)          { flushActiveTab(); undoMgr.undo(); return true; }
         else if (id == R.id.action_redo)          { flushActiveTab(); undoMgr.redo(); return true; }
         else if (id == R.id.action_find)          { new FindReplaceDialog(this, editor).show(); return true; }
+        else if (id == R.id.action_libraries)     { showLibraries(); return true; }
         else if (id == R.id.action_logcat)        { showLogcat(); return true; }
         else if (id == R.id.action_theme)         { toggleTheme(); return true; }
         return super.onOptionsItemSelected(item);
