@@ -8,6 +8,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.PrintStream;
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -102,13 +103,11 @@ public class ApkBuilder {
                 }
             }
 
-            // ---- Copy resolved Maven deps from cache (auto-resolve if cold) ----
             File depsFile = new File(projectRoot, ".myide/deps.txt");
             if (depsFile.exists()) {
                 File mavenDir = new File(workDir, "maven_libs");
                 mavenDir.mkdirs();
 
-                // 1. First try a direct copy from the cache.
                 int n = 0;
                 try {
                     n = MavenResolver.copyResolvedToDir(ctx, depsFile, mavenDir);
@@ -116,7 +115,6 @@ public class ApkBuilder {
                     say("Maven copy failed: " + e.getMessage());
                 }
 
-                // 2. If the cache was empty (cold cache), auto-resolve then retry.
                 if (n == 0) {
                     say("Cache empty — downloading dependencies...");
                     if (autoResolveDeps(depsFile)) {
@@ -134,7 +132,7 @@ public class ApkBuilder {
                 if (n > 0) {
                     collectDeps(mavenDir, jarDeps, aarDeps);
                 } else {
-                    say("⚠️ No Maven deps available — build may fail if code imports them");
+                    say("No Maven deps available — build may fail if code imports them");
                 }
             }
 
@@ -224,7 +222,7 @@ public class ApkBuilder {
             classesDir.mkdirs();
             compileJava(androidJar, ecjFull, ecjResDir, sourceRoots, genDir, classesDir, jarDeps);
 
-            say("Dexing (R8)...");
+            say("Dexing (D8)...");
             File dexDir = new File(workDir, "dex");
             dexDir.mkdirs();
             compileDex(androidJar, d8Zip, classesDir, dexDir, jarDeps, minSdk);
@@ -246,12 +244,6 @@ public class ApkBuilder {
         }
     }
 
-    // ---------- NEW: auto-resolve ----------
-
-    /**
-     * Blocks until MavenResolver finishes downloading all coords in depsFile
-     * into the local cache. Returns true if resolution reported success.
-     */
     private boolean autoResolveDeps(File depsFile) {
         final CountDownLatch latch = new CountDownLatch(1);
         final AtomicBoolean ok = new AtomicBoolean(false);
@@ -269,7 +261,6 @@ public class ApkBuilder {
 
         try {
             resolver.resolve(depsFile);
-            // wait up to 5 minutes
             boolean finished = latch.await(5, TimeUnit.MINUTES);
             if (!finished) {
                 say("Resolve timed out");
@@ -284,8 +275,6 @@ public class ApkBuilder {
             return false;
         }
     }
-
-    // ---------- helpers ----------
 
     private Result fail(StringBuilder log, String msg) {
         log.append(msg).append('\n');
@@ -421,32 +410,65 @@ public class ApkBuilder {
 
         if (!outputDir.exists()) outputDir.mkdirs();
 
-        DexClassLoader loader = new DexClassLoader(
-            d8Zip.getAbsolutePath(),
-            ctx.getCacheDir().getAbsolutePath(),
-            null,
-            ctx.getClassLoader());
-
-        Class<?> r8 = loader.loadClass("com.android.tools.r8.R8");
-        Method main = r8.getMethod("main", String[].class);
-
-        List<String> args = new ArrayList<String>();
-        args.add("--output"); args.add(outputDir.getAbsolutePath());
-        args.add("--min-api"); args.add(String.valueOf(minSdk));
-        args.add("--lib"); args.add(androidJar.getAbsolutePath());
-        args.add("--release");
-        for (File f : classFiles) args.add(f.getAbsolutePath());
-        for (File j : extraJars) {
-            if (j != null && j.exists() && j.getName().endsWith(".jar")) {
-                args.add("--lib");
-                args.add(j.getAbsolutePath());
-            }
-        }
+        PrintStream oldOut = System.out;
+        PrintStream oldErr = System.err;
+        ByteArrayOutputStream d8Out = new ByteArrayOutputStream();
+        ByteArrayOutputStream d8Err = new ByteArrayOutputStream();
+        System.setOut(new PrintStream(d8Out, true));
+        System.setErr(new PrintStream(d8Err, true));
 
         try {
-            main.invoke(null, (Object) args.toArray(new String[0]));
-        } catch (InvocationTargetException ite) {
-            throw new RuntimeException("R8 error: " + causeChain(ite));
+            DexClassLoader loader = new DexClassLoader(
+                d8Zip.getAbsolutePath(),
+                ctx.getCacheDir().getAbsolutePath(),
+                null,
+                ctx.getClassLoader());
+
+            Class<?> d8Class = loader.loadClass("com.android.tools.r8.D8");
+            Method main = d8Class.getMethod("main", String[].class);
+
+            List<String> args = new ArrayList<String>();
+            args.add("--output");   args.add(outputDir.getAbsolutePath());
+            args.add("--min-api");  args.add(String.valueOf(minSdk));
+            args.add("--lib");      args.add(androidJar.getAbsolutePath());
+
+            for (File j : extraJars) {
+                if (j != null && j.exists() && j.getName().endsWith(".jar")) {
+                    args.add(j.getAbsolutePath());
+                }
+            }
+
+            for (File f : classFiles) args.add(f.getAbsolutePath());
+
+            try {
+                main.invoke(null, (Object) args.toArray(new String[0]));
+            } catch (InvocationTargetException ite) {
+                throw new RuntimeException("D8 error: " + causeChain(ite)
+                    + "\n--- stdout ---\n" + d8Out.toString()
+                    + "\n--- stderr ---\n" + d8Err.toString());
+            }
+
+            File[] kids = outputDir.listFiles();
+            boolean anyDex = false;
+            if (kids != null) {
+                for (File f : kids) {
+                    if (f.getName().endsWith(".dex") && f.length() > 0) {
+                        anyDex = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!anyDex) {
+                throw new RuntimeException("D8 produced no .dex files.\n"
+                    + "Inputs: " + classFiles.size() + " .class files, "
+                    + extraJars.size() + " extra jars\n"
+                    + "--- stdout ---\n" + d8Out.toString()
+                    + "\n--- stderr ---\n" + d8Err.toString());
+            }
+        } finally {
+            System.setOut(oldOut);
+            System.setErr(oldErr);
         }
     }
 
