@@ -11,9 +11,13 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -47,12 +51,6 @@ public class MavenResolver {
     //  Public API
     // =========================================================
 
-    /**
-     * Resolves dependencies listed in the given file.
-     * Each line: group:artifact:version
-     * Downloads to app cache, expands transitives, rewrites the file
-     * with the full resolved set (deduped, sorted).
-     */
     public void resolve(File depsFile) {
         try {
             if (!depsFile.exists()) {
@@ -68,7 +66,6 @@ public class MavenResolver {
 
             say("Resolving " + roots.size() + " dependencies...");
 
-            // BFS with visited set
             Set<String> visited = new HashSet<String>();
             Deque<Coord> queue = new ArrayDeque<Coord>(roots);
             List<Coord> resolved = new ArrayList<Coord>();
@@ -87,14 +84,30 @@ public class MavenResolver {
                 }
             }
 
-            // Rewrite deps file with full resolved list
-            StringBuilder sb = new StringBuilder();
+            // ---- Deduplicate by group:artifact, keep highest version ----
+            Map<String, Coord> winners = new HashMap<String, Coord>();
             for (Coord c : resolved) {
+                String key = c.group + ":" + c.artifact;
+                Coord cur = winners.get(key);
+                if (cur == null || compareVersions(c.version, cur.version) > 0) {
+                    winners.put(key, c);
+                }
+            }
+
+            List<Coord> finalList = new ArrayList<Coord>(winners.values());
+            Collections.sort(finalList, new Comparator<Coord>() {
+                    @Override public int compare(Coord a, Coord b) {
+                        return a.toString().compareTo(b.toString());
+                    }
+                });
+
+            StringBuilder sb = new StringBuilder();
+            for (Coord c : finalList) {
                 sb.append(c.group).append(':').append(c.artifact).append(':').append(c.version).append('\n');
             }
             writeFile(depsFile, sb.toString());
 
-            done(true, "Resolved " + resolved.size() + " artifacts");
+            done(true, "Resolved " + finalList.size() + " artifacts");
         } catch (Exception e) {
             done(false, "Resolve failed: " + e.getMessage());
         }
@@ -111,16 +124,14 @@ public class MavenResolver {
         String packaging = extractTag(pomText, "packaging");
         if (packaging == null || packaging.isEmpty()) packaging = "jar";
 
-        // Skip poms (aggregator artifacts) — no binary, but resolve their deps
         boolean hasBinary = !"pom".equals(packaging);
 
         if (hasBinary) {
             String ext = "aar".equals(packaging) ? "aar" : "jar";
-            File bin = ensureInCache(c, ext, c.artifact + "-" + c.version + "." + ext);
+            ensureInCache(c, ext, c.artifact + "-" + c.version + "." + ext);
             out.add(c);
         }
 
-        // Parse <dependencies> block (only the direct ones, not inside <dependencyManagement> or <build>)
         List<Coord> children = parseDependencies(pomText);
         for (Coord child : children) {
             if (child.version != null && !child.version.isEmpty()
@@ -128,6 +139,27 @@ public class MavenResolver {
                 queue.add(child);
             }
         }
+    }
+
+    // =========================================================
+    //  Version comparison
+    // =========================================================
+
+    private static int compareVersions(String a, String b) {
+        if (a == null) return -1;
+        if (b == null) return 1;
+        String[] ap = a.split("[.\\-]");
+        String[] bp = b.split("[.\\-]");
+        int n = Math.max(ap.length, bp.length);
+        for (int i = 0; i < n; i++) {
+            String x = i < ap.length ? ap[i] : "0";
+            String y = i < bp.length ? bp[i] : "0";
+            int xi, yi;
+            try { xi = Integer.parseInt(x); } catch (Exception e) { xi = 0; }
+            try { yi = Integer.parseInt(y); } catch (Exception e) { yi = 0; }
+            if (xi != yi) return xi - yi;
+        }
+        return 0;
     }
 
     // =========================================================
@@ -190,11 +222,8 @@ public class MavenResolver {
     private List<Coord> parseDependencies(String pom) {
         List<Coord> result = new ArrayList<Coord>();
 
-        // Remove <dependencyManagement>...</dependencyManagement> to skip managed versions
         String cleaned = pom.replaceAll("(?s)<dependencyManagement>.*?</dependencyManagement>", "");
-        // Remove <build>...</build>
         cleaned = cleaned.replaceAll("(?s)<build>.*?</build>", "");
-        // Remove <profiles>...</profiles> (keep it simple)
         cleaned = cleaned.replaceAll("(?s)<profiles>.*?</profiles>", "");
 
         Matcher m = P_DEPENDENCIES.matcher(cleaned);
@@ -288,10 +317,6 @@ public class MavenResolver {
     //  Copy cache files into a project build dir
     // =========================================================
 
-    /**
-     * Copy all resolved jars/aars from cache into destDir.
-     * Reads coordinates from depsFile, finds matching files in cache.
-     */
     public static int copyResolvedToDir(Context ctx, File depsFile, File destDir) throws Exception {
         List<Coord> coords = parseDepsFile(depsFile);
         if (!destDir.exists()) destDir.mkdirs();
