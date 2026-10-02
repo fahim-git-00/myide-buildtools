@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Always-visible primary actions -->
     <item
         android:id="@+id/action_new_project"
         android:title="New"
@@ -14,6 +15,7 @@
         android:title="Build"
         android:showAsAction="always" />
 
+    <!-- Editor actions (overflow) -->
     <item
         android:id="@+id/action_undo"
         android:title="Undo"
@@ -27,6 +29,7 @@
         android:title="Find &amp; Replace"
         android:showAsAction="never" />
 
+    <!-- File actions (overflow) -->
     <item
         android:id="@+id/action_open"
         android:title="Open"
@@ -44,14 +47,10 @@
         android:title="Refresh Files"
         android:showAsAction="never" />
 
+    <!-- Debugging -->
     <item
         android:id="@+id/action_logcat"
         android:title="Logcat"
-        android:showAsAction="never" />
-
-    <item
-        android:id="@+id/action_theme"
-        android:title="Toggle Theme"
         android:showAsAction="never" />
 
 </menu>

@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -58,11 +59,11 @@ public class MainActivity extends Activity {
 
     private File currentFile = null;
 
-    /** The tab whose contents are currently in the editor. */
     private EditorTab lastLoaded = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        applyTheme();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.main);
 
@@ -139,6 +140,29 @@ public class MainActivity extends Activity {
 
         requestStoragePermissionIfNeeded();
         updateTitle();
+    }
+
+    // =========================================================
+    //  Theme
+    // =========================================================
+
+    private void applyTheme() {
+        SharedPreferences prefs = getSharedPreferences("theme", MODE_PRIVATE);
+        int mode = prefs.getInt("mode", 2); // 0=light, 1=dark, 2=system
+        AppCompatDelegateHelper.setMode(this, mode);
+    }
+
+    private void toggleTheme() {
+        SharedPreferences prefs = getSharedPreferences("theme", MODE_PRIVATE);
+        int current = prefs.getInt("mode", 2);
+        int next;
+        String msg;
+        if (current == 2)      { next = 0; msg = "Light theme"; }
+        else if (current == 0) { next = 1; msg = "Dark theme"; }
+        else                   { next = 2; msg = "Follow system"; }
+        prefs.edit().putInt("mode", next).apply();
+        toast(msg);
+        recreate();
     }
 
     // =========================================================
@@ -331,6 +355,7 @@ public class MainActivity extends Activity {
         else if (id == R.id.action_redo)          { flushActiveTab(); undoMgr.redo(); return true; }
         else if (id == R.id.action_find)          { new FindReplaceDialog(this, editor).show(); return true; }
         else if (id == R.id.action_logcat)        { showLogcat(); return true; }
+        else if (id == R.id.action_theme)         { toggleTheme(); return true; }
         return super.onOptionsItemSelected(item);
     }
 
