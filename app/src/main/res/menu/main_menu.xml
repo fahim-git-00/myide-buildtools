@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Always-visible primary actions -->
+    <item
+        android:id="@+id/action_new_project"
+        android:title="New"
+        android:showAsAction="always" />
+    <item
+        android:id="@+id/action_toggle_drawer"
+        android:title="Files"
+        android:showAsAction="always" />
+    <item
+        android:id="@+id/action_build"
+        android:title="Build"
+        android:showAsAction="always" />
+
+    <!-- Editor actions (overflow) -->
+    <item
+        android:id="@+id/action_undo"
+        android:title="Undo"
+        android:showAsAction="never" />
+    <item
+        android:id="@+id/action_redo"
+        android:title="Redo"
+        android:showAsAction="never" />
+    <item
+        android:id="@+id/action_find"
+        android:title="Find &amp; Replace"
+        android:showAsAction="never" />
+
+    <!-- File actions (overflow) -->
+    <item
+        android:id="@+id/action_open"
+        android:title="Open"
+        android:showAsAction="never" />
+    <item
+        android:id="@+id/action_save"
+        android:title="Save"
+        android:showAsAction="never" />
+    <item
+        android:id="@+id/action_save_as"
+        android:title="Save As"
+        android:showAsAction="never" />
+    <item
+        android:id="@+id/action_refresh"
+        android:title="Refresh Files"
+        android:showAsAction="never" />
+
+    <!-- Debugging -->
+    <item
+        android:id="@+id/action_logcat"
+        android:title="Logcat"
+        android:showAsAction="never" />
+
+</menu>

@@ -1,0 +1,2 @@
+rootProject.name = "MyIDE"
+include ':app'
