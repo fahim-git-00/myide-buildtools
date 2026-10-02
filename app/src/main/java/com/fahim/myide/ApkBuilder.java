@@ -56,7 +56,6 @@ public class ApkBuilder {
             deleteRecursive(workDir);
             workDir.mkdirs();
 
-            // ---------- collect source roots, res roots, libs ----------
             List<File> sourceRoots = new ArrayList<File>();
             List<File> resRoots = new ArrayList<File>();
             List<File> jarDeps = new ArrayList<File>();
@@ -75,7 +74,6 @@ public class ApkBuilder {
             sourceRoots.add(appSrc);
             resRoots.add(appRes);
 
-            // settings.gradle modules (e.g. include ':mylib')
             File settingsGradle = new File(projectRoot, "settings.gradle");
             if (settingsGradle.exists()) {
                 String settings = readFile(settingsGradle);
@@ -101,11 +99,9 @@ public class ApkBuilder {
                 }
             }
 
-            // libs in various common places
             collectDeps(new File(projectRoot, "libs"), jarDeps, aarDeps);
             collectDeps(new File(projectRoot, "app/libs"), jarDeps, aarDeps);
 
-            // root-level jars/aars
             File[] rootFiles = projectRoot.listFiles();
             if (rootFiles != null) {
                 for (File f : rootFiles) {
@@ -115,7 +111,6 @@ public class ApkBuilder {
                 }
             }
 
-            // ---------- extract tools from assets ----------
             say("Extracting tools...");
             File androidJar  = extractAsset("android.jar");
             File ecjFull     = extractAsset("ecj_full.jar");
@@ -130,7 +125,6 @@ public class ApkBuilder {
             ecjResDir.mkdirs();
             unzipTo(ecjResZip, ecjResDir);
 
-            // ---------- merge resources ----------
             say("Merging resources...");
             File mergedRes = new File(workDir, "res_merged");
             mergedRes.mkdirs();
@@ -138,7 +132,6 @@ public class ApkBuilder {
                 if (r.exists()) copyDirContents(r, mergedRes);
             }
 
-            // ---------- extract AARs ----------
             File aarClassesDir = new File(workDir, "aar_classes");
             aarClassesDir.mkdirs();
             for (File aar : aarDeps) {
@@ -158,18 +151,15 @@ public class ApkBuilder {
                 }
             }
 
-            // ---------- patch manifest ----------
             File patchedManifest = new File(workDir, "AndroidManifest.xml");
             patchManifest(appManifest, patchedManifest, minSdk, targetSdk);
 
-            // ---------- aapt2 compile res ----------
             say("Compiling resources (aapt2)...");
             File compiledRes = new File(workDir, "compiled_res");
             compiledRes.mkdirs();
             runAapt2("compile", "--dir", mergedRes.getAbsolutePath(),
                      "-o", compiledRes.getAbsolutePath());
 
-            // ---------- aapt2 link ----------
             say("Linking resources (aapt2)...");
             File genDir = new File(workDir, "gen");
             genDir.mkdirs();
@@ -186,28 +176,24 @@ public class ApkBuilder {
 
             File[] flat = compiledRes.listFiles();
             if (flat != null) for (File f : flat) {
-					if (f.getName().endsWith(".flat")) linkArgs.add(f.getAbsolutePath());
-				}
+                if (f.getName().endsWith(".flat")) linkArgs.add(f.getAbsolutePath());
+            }
             runAapt2(linkArgs.toArray(new String[0]));
 
-            // ---------- compile Java (ECJ) ----------
             say("Compiling Java (ECJ)...");
             File classesDir = new File(workDir, "classes");
             classesDir.mkdirs();
             compileJava(androidJar, ecjFull, ecjResDir, sourceRoots, genDir, classesDir, jarDeps);
 
-            // ---------- dex with d8 (multidex) ----------
             say("Dexing (d8, multidex)...");
             File dexDir = new File(workDir, "dex");
             dexDir.mkdirs();
             compileDex(androidJar, d8Zip, classesDir, dexDir, jarDeps, minSdk);
 
-            // ---------- inject dex files into apk ----------
             say("Packaging APK...");
             File withDex = new File(workDir, "app-withdex.apk");
             addDexToApk(unsignedApk, dexDir, withDex);
 
-            // ---------- sign ----------
             say("Signing APK...");
             File signedApk = new File(workDir, "app-signed.apk");
             signApk(apksigner, keyPk8, keyPem, withDex, signedApk);
@@ -219,6 +205,45 @@ public class ApkBuilder {
             log.append("ERROR: ").append(causeChain(t)).append('\n');
             return new Result(false, null, log.toString());
         }
+    }
+
+    // =========================================================
+    //  AAB export — converts a signed APK to an AAB
+    // =========================================================
+    public File buildAab(File signedApk) throws Exception {
+        say("Converting to AAB...");
+
+        File bundletool = extractAsset("bundletool.jar");
+        File workDir = new File(ctx.getFilesDir(), "aab_area");
+        deleteRecursive(workDir);
+        workDir.mkdirs();
+
+        File aab = new File(workDir, "app.aab");
+
+        DexClassLoader loader = new DexClassLoader(
+            bundletool.getAbsolutePath(),
+            ctx.getCacheDir().getAbsolutePath(),
+            null,
+            ctx.getClassLoader());
+
+        Class<?> tool = loader.loadClass("com.android.tools.build.bundletool.BundleToolMain");
+        Method main = tool.getMethod("main", String[].class);
+
+        List<String> args = new ArrayList<String>();
+        args.add("build-bundle");
+        args.add("--modules=" + signedApk.getAbsolutePath());
+        args.add("--output=" + aab.getAbsolutePath());
+
+        try {
+            main.invoke(null, (Object) args.toArray(new String[0]));
+        } catch (InvocationTargetException ite) {
+            throw new RuntimeException("bundletool error: " + causeChain(ite));
+        }
+
+        if (!aab.exists() || aab.length() == 0) {
+            throw new RuntimeException("AAB not produced");
+        }
+        return aab;
     }
 
     // ---------- helpers ----------
@@ -433,7 +458,6 @@ public class ApkBuilder {
     private void addDexToApk(File inApk, File dexDir, File outApk) throws Exception {
         if (outApk.exists()) outApk.delete();
 
-        // find all classes*.dex in dexDir
         List<File> dexFiles = new ArrayList<File>();
         File[] kids = dexDir.listFiles();
         if (kids != null) {
@@ -507,7 +531,7 @@ public class ApkBuilder {
                 target.mkdirs();
                 copyDirContents(k, target);
             } else {
-                if (target.exists()) continue; // don't overwrite existing (app res wins)
+                if (target.exists()) continue;
                 File p = target.getParentFile();
                 if (p != null) p.mkdirs();
                 copyFile(k, target);
@@ -559,7 +583,7 @@ public class ApkBuilder {
         int d = 0;
         while (t != null && d < 10) {
             sb.append(t.getClass().getSimpleName()).append(": ")
-				.append(t.getMessage()).append('\n');
+              .append(t.getMessage()).append('\n');
             Throwable next = (t instanceof InvocationTargetException)
                 ? ((InvocationTargetException) t).getTargetException()
                 : t.getCause();
