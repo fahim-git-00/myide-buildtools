@@ -1,90 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto">
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
 
     <group android:id="@+id/group_file">
-        <item
-            android:id="@+id/action_new_project"
-            android:title="New Project"
-            android:icon="@android:drawable/ic_menu_add"
-            app:showAsAction="never" />
-        <item
-            android:id="@+id/action_open"
-            android:title="Open Project"
-            android:icon="@android:drawable/ic_menu_agenda"
-            app:showAsAction="never" />
-        <item
-            android:id="@+id/action_refresh"
-            android:title="Refresh Files"
-            android:icon="@android:drawable/ic_menu_rotate"
-            app:showAsAction="never" />
+        <item android:id="@+id/action_new_project" android:title="New Project"
+            android:icon="@android:drawable/ic_menu_add" android:showAsAction="never" />
+        <item android:id="@+id/action_open" android:title="Open Project"
+            android:icon="@android:drawable/ic_menu_agenda" android:showAsAction="never" />
+        <item android:id="@+id/action_refresh" android:title="Refresh Files"
+            android:icon="@android:drawable/ic_menu_rotate" android:showAsAction="never" />
     </group>
 
     <group android:id="@+id/group_edit">
-        <item
-            android:id="@+id/action_undo"
-            android:title="Undo"
-            android:icon="@android:drawable/ic_menu_revert"
-            app:showAsAction="never" />
-        <item
-            android:id="@+id/action_redo"
-            android:title="Redo"
-            android:icon="@android:drawable/ic_menu_send"
-            app:showAsAction="never" />
-        <item
-            android:id="@+id/action_find"
-            android:title="Find &amp; Replace"
-            android:icon="@android:drawable/ic_menu_search"
-            app:showAsAction="never" />
+        <item android:id="@+id/action_undo" android:title="Undo"
+            android:icon="@android:drawable/ic_menu_revert" android:showAsAction="never" />
+        <item android:id="@+id/action_redo" android:title="Redo"
+            android:icon="@android:drawable/ic_menu_send" android:showAsAction="never" />
+        <item android:id="@+id/action_find" android:title="Find &amp; Replace"
+            android:icon="@android:drawable/ic_menu_search" android:showAsAction="never" />
     </group>
 
     <group android:id="@+id/group_save">
-        <item
-            android:id="@+id/action_save"
-            android:title="Save"
-            android:icon="@android:drawable/ic_menu_save"
-            app:showAsAction="never" />
-        <item
-            android:id="@+id/action_save_as"
-            android:title="Save As"
-            android:icon="@android:drawable/ic_menu_edit"
-            app:showAsAction="never" />
+        <item android:id="@+id/action_save" android:title="Save"
+            android:icon="@android:drawable/ic_menu_save" android:showAsAction="never" />
+        <item android:id="@+id/action_save_as" android:title="Save As"
+            android:icon="@android:drawable/ic_menu_edit" android:showAsAction="never" />
     </group>
 
     <group android:id="@+id/group_build">
-        <item
-            android:id="@+id/action_build"
-            android:title="Build APK"
-            android:icon="@android:drawable/ic_media_play"
-            app:showAsAction="never" />
-        <item
-            android:id="@+id/action_libraries"
-            android:title="Libraries"
-            android:icon="@android:drawable/ic_menu_manage"
-            app:showAsAction="never" />
-        <item
-            android:id="@+id/action_kotlin_mode"
-            android:title="Kotlin Mode"
-            android:icon="@android:drawable/ic_menu_compass"
-            app:showAsAction="never" />
+        <item android:id="@+id/action_build" android:title="Build APK"
+            android:icon="@android:drawable/ic_media_play" android:showAsAction="never" />
+        <item android:id="@+id/action_libraries" android:title="Libraries"
+            android:icon="@android:drawable/ic_menu_manage" android:showAsAction="never" />
+        <item android:id="@+id/action_kotlin_mode" android:title="Kotlin Mode"
+            android:icon="@android:drawable/ic_menu_compass" android:showAsAction="never" />
     </group>
 
     <group android:id="@+id/group_tools">
-        <item
-            android:id="@+id/action_logcat"
-            android:title="Logcat"
-            android:icon="@android:drawable/ic_menu_info_details"
-            app:showAsAction="never" />
-        <item
-            android:id="@+id/action_theme"
-            android:title="Toggle Theme"
-            android:icon="@android:drawable/ic_menu_day"
-            app:showAsAction="never" />
-        <item
-            android:id="@+id/action_toggle_drawer"
-            android:title="Toggle Files"
-            android:icon="@android:drawable/ic_menu_gallery"
-            app:showAsAction="never" />
+        <item android:id="@+id/action_logcat" android:title="Logcat"
+            android:icon="@android:drawable/ic_menu_info_details" android:showAsAction="never" />
+        <item android:id="@+id/action_theme" android:title="Toggle Theme"
+            android:icon="@android:drawable/ic_menu_day" android:showAsAction="never" />
+        <item android:id="@+id/action_toggle_drawer" android:title="Toggle Files"
+            android:icon="@android:drawable/ic_menu_gallery" android:showAsAction="never" />
     </group>
 
 </menu>
