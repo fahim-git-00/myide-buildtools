@@ -14,6 +14,9 @@ import java.lang.reflect.Method;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
@@ -99,20 +102,39 @@ public class ApkBuilder {
                 }
             }
 
-            // ---- Copy resolved Maven deps from cache ----
+            // ---- Copy resolved Maven deps from cache (auto-resolve if cold) ----
             File depsFile = new File(projectRoot, ".myide/deps.txt");
             if (depsFile.exists()) {
-                say("Copying Maven deps...");
                 File mavenDir = new File(workDir, "maven_libs");
                 mavenDir.mkdirs();
+
+                // 1. First try a direct copy from the cache.
+                int n = 0;
                 try {
-                    int n = MavenResolver.copyResolvedToDir(ctx, depsFile, mavenDir);
-                    if (n > 0) {
-                        say("Copied " + n + " Maven files");
-                        collectDeps(mavenDir, jarDeps, aarDeps);
-                    }
+                    n = MavenResolver.copyResolvedToDir(ctx, depsFile, mavenDir);
                 } catch (Exception e) {
                     say("Maven copy failed: " + e.getMessage());
+                }
+
+                // 2. If the cache was empty (cold cache), auto-resolve then retry.
+                if (n == 0) {
+                    say("Cache empty — downloading dependencies...");
+                    if (autoResolveDeps(depsFile)) {
+                        try {
+                            n = MavenResolver.copyResolvedToDir(ctx, depsFile, mavenDir);
+                            say("Copied " + n + " Maven files after resolve");
+                        } catch (Exception e) {
+                            say("Maven copy failed after resolve: " + e.getMessage());
+                        }
+                    }
+                } else {
+                    say("Copied " + n + " Maven files");
+                }
+
+                if (n > 0) {
+                    collectDeps(mavenDir, jarDeps, aarDeps);
+                } else {
+                    say("⚠️ No Maven deps available — build may fail if code imports them");
                 }
             }
 
@@ -221,6 +243,45 @@ public class ApkBuilder {
         } catch (Throwable t) {
             log.append("ERROR: ").append(causeChain(t)).append('\n');
             return new Result(false, null, log.toString());
+        }
+    }
+
+    // ---------- NEW: auto-resolve ----------
+
+    /**
+     * Blocks until MavenResolver finishes downloading all coords in depsFile
+     * into the local cache. Returns true if resolution reported success.
+     */
+    private boolean autoResolveDeps(File depsFile) {
+        final CountDownLatch latch = new CountDownLatch(1);
+        final AtomicBoolean ok = new AtomicBoolean(false);
+
+        MavenResolver resolver = new MavenResolver(ctx, new MavenResolver.Progress() {
+            @Override public void onProgress(String message) {
+                say(message);
+            }
+            @Override public void onDone(boolean success, String message) {
+                ok.set(success);
+                say("Resolve: " + message);
+                latch.countDown();
+            }
+        });
+
+        try {
+            resolver.resolve(depsFile);
+            // wait up to 5 minutes
+            boolean finished = latch.await(5, TimeUnit.MINUTES);
+            if (!finished) {
+                say("Resolve timed out");
+                return false;
+            }
+            return ok.get();
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (Throwable t) {
+            say("Resolve error: " + causeChain(t));
+            return false;
         }
     }
 
