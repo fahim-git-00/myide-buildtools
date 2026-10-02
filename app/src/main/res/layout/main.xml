@@ -2,56 +2,128 @@
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/bg_light">
+    android:background="@color/bg_dark">
+
+    <LinearLayout
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_alignParentTop="true"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/surface"
+        android:elevation="4dp"
+        android:paddingLeft="8dp"
+        android:paddingRight="8dp">
+
+        <TextView
+            android:id="@+id/btnMenu"
+            style="@style/ToolbarButton"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="☰" />
+
+        <TextView
+            android:id="@+id/txtTitle"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:paddingLeft="12dp"
+            android:singleLine="true"
+            android:ellipsize="middle"
+            android:text="MyIDE"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/btnUndo"
+            style="@style/ToolbarButton"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="↶" />
+
+        <TextView
+            android:id="@+id/btnRedo"
+            style="@style/ToolbarButton"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="↷" />
+
+        <TextView
+            android:id="@+id/btnSave"
+            style="@style/ToolbarButton"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="💾" />
+
+        <TextView
+            android:id="@+id/btnBuild"
+            style="@style/ToolbarButton"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="▶" />
+
+        <TextView
+            android:id="@+id/btnMore"
+            style="@style/ToolbarButton"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:text="⋮" />
+    </LinearLayout>
+
+    <HorizontalScrollView
+        android:id="@+id/tabStrip"
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:layout_below="@id/toolbar"
+        android:background="@color/bg_darker"
+        android:scrollbars="none" />
 
     <LinearLayout
         android:id="@+id/contentRoot"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical">
+        android:layout_above="@id/statusBar"
+        android:layout_below="@id/tabStrip"
+        android:orientation="horizontal">
 
-        <HorizontalScrollView
-            android:id="@+id/tabStrip"
-            android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:background="@color/surface_light"
-            android:scrollbars="none" />
+        <TextView
+            android:id="@+id/lineNumbers"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:background="@color/gutter_bg"
+            android:gravity="top|end"
+            android:minWidth="48dp"
+            android:paddingLeft="8dp"
+            android:paddingRight="8dp"
+            android:paddingTop="8dp"
+            android:text="1"
+            android:textColor="@color/gutter_text"
+            android:textSize="13sp"
+            android:typeface="monospace" />
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
+        <EditText
+            android:id="@+id/editor"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
             android:layout_weight="1"
-            android:orientation="horizontal">
-
-            <TextView
-                android:id="@+id/lineNumbers"
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:background="@color/bg_light"
-                android:gravity="top|end"
-                android:minWidth="40dp"
-                android:paddingLeft="6dp"
-                android:paddingRight="6dp"
-                android:paddingTop="8dp"
-                android:text="1"
-                android:textColor="@color/text_dim_light"
-                android:textSize="13sp"
-                android:typeface="monospace" />
-
-            <EditText
-                android:id="@+id/editor"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:background="@color/bg_light"
-                android:gravity="top|start"
-                android:inputType="textMultiLine|textNoSuggestions"
-                android:padding="8dp"
-                android:scrollbars="vertical|horizontal"
-                android:textColor="@color/text_light"
-                android:textSize="13sp"
-                android:typeface="monospace" />
-        </LinearLayout>
+            android:background="@color/bg_dark"
+            android:gravity="top|start"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:padding="8dp"
+            android:scrollbars="vertical|horizontal"
+            android:textColor="@color/text_primary"
+            android:textColorHighlight="@color/accent"
+            android:textSize="13sp"
+            android:typeface="monospace" />
     </LinearLayout>
 
     <View
@@ -63,10 +135,10 @@
 
     <LinearLayout
         android:id="@+id/sidebar"
-        android:layout_width="280dp"
+        android:layout_width="300dp"
         android:layout_height="match_parent"
         android:layout_alignParentLeft="true"
-        android:background="@color/surface_light"
+        android:background="@color/surface"
         android:elevation="8dp"
         android:orientation="vertical"
         android:visibility="gone">
@@ -75,27 +147,93 @@
             android:id="@+id/txtProjectPath"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@color/bg_light"
+            android:background="@color/bg_darker"
             android:ellipsize="middle"
             android:padding="12dp"
             android:singleLine="true"
-            android:text="No project"
+            android:text="No project opened"
             android:textColor="@color/accent_light"
             android:textSize="12sp" />
 
-        <Button
-            android:id="@+id/btnOpenFolder"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="\uD83D\uDCC1 Open folder" />
+            android:orientation="horizontal"
+            android:background="@color/surface_alt"
+            android:padding="6dp">
+
+            <Button
+                android:id="@+id/btnOpenFolder"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="?android:attr/selectableItemBackground"
+                android:text="📁 Open"
+                android:textAllCaps="false"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
+
+            <Button
+                android:id="@+id/btnRefreshTree"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="?android:attr/selectableItemBackground"
+                android:text="🔄 Refresh"
+                android:textAllCaps="false"
+                android:textColor="@color/text_primary"
+                android:textSize="13sp" />
+        </LinearLayout>
 
         <ListView
             android:id="@+id/fileList"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:divider="@color/divider_light"
-            android:dividerHeight="1dp" />
+            android:background="@color/surface"
+            android:divider="@color/divider"
+            android:dividerHeight="1dp"
+            android:scrollbars="vertical" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/statusBar"
+        android:layout_width="match_parent"
+        android:layout_height="24dp"
+        android:layout_alignParentBottom="true"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@color/accent"
+        android:paddingLeft="10dp"
+        android:paddingRight="10dp">
+
+        <TextView
+            android:id="@+id/txtStatusLeft"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:singleLine="true"
+            android:ellipsize="end"
+            android:text="Ready"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/txtStatusPos"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Ln 1, Col 1"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/txtStatusLang"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingLeft="12dp"
+            android:text="Java"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp" />
     </LinearLayout>
 
 </RelativeLayout>

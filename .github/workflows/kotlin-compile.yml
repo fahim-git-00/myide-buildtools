@@ -95,9 +95,7 @@ jobs:
           python3 - <<'PY'
           import os, base64, pathlib
 
-          cc = (os.environ.get("CHUNK_COUNT") or "").strip()
-          if not cc:
-              cc = "1"
+          cc = (os.environ.get("CHUNK_COUNT") or "").strip() or "1"
           print("CHUNK_COUNT =", cc)
 
           payload = ""
@@ -107,30 +105,23 @@ jobs:
               payload += part
 
           print("PAYLOAD_LEN =", len(payload))
-
           if not payload:
-              print("Empty payload")
-              raise SystemExit(1)
+              raise SystemExit("Empty payload")
 
           out_root = pathlib.Path("ktsrc")
           out_root.mkdir(exist_ok=True)
 
           for item in payload.split("~"):
-              if not item:
-                  continue
-              if "|" not in item:
-                  print("Skipping malformed item:", item[:60])
+              if not item or "|" not in item:
                   continue
               name, b64 = item.split("|", 1)
-              data = base64.b64decode(b64)
-              (out_root / name).write_bytes(data)
-              print("wrote", name, len(data), "bytes")
+              (out_root / name).write_bytes(base64.b64decode(b64))
+              print("wrote", name)
 
           files = list(out_root.glob("*.kt"))
           print("TOTAL_KT_FILES =", len(files))
           if not files:
-              print("No .kt files decoded")
-              raise SystemExit(1)
+              raise SystemExit("No .kt files decoded")
           PY
 
       - name: Compile Kotlin
@@ -142,7 +133,6 @@ jobs:
             -d kotlin-classes \
             ktsrc/*.kt 2>&1 | tee kotlinc.log
           if [ ! -d kotlin-classes ] || [ -z "$(ls -A kotlin-classes)" ]; then
-            echo "No classes produced"
             cat kotlinc.log
             exit 1
           fi

@@ -51,16 +51,25 @@ public class FindReplaceDialog {
         int pad = dp(12);
         root.setPadding(pad, pad, pad, pad);
 
+        TextView title = new TextView(ctx);
+        title.setText("Find & Replace");
+        title.setTextColor(0xFFDCDCAA);
+        title.setTextSize(14f);
+        title.setPadding(0, 0, 0, dp(8));
+        root.addView(title);
+
         findField = new EditText(ctx);
         findField.setHint("Find");
         findField.setTextColor(0xFFD4D4D4);
         findField.setHintTextColor(0xFF666666);
+        findField.setSingleLine(true);
         root.addView(findField);
 
         replaceField = new EditText(ctx);
         replaceField.setHint("Replace with");
         replaceField.setTextColor(0xFFD4D4D4);
         replaceField.setHintTextColor(0xFF666666);
+        replaceField.setSingleLine(true);
         root.addView(replaceField);
 
         LinearLayout opts = new LinearLayout(ctx);
@@ -82,18 +91,19 @@ public class FindReplaceDialog {
 
         LinearLayout btns = new LinearLayout(ctx);
         btns.setOrientation(LinearLayout.HORIZONTAL);
+        btns.setGravity(Gravity.END);
         btns.addView(btn("Prev", new View.OnClickListener() {
-							 @Override public void onClick(View v) { step(-1); }
-						 }));
+                             @Override public void onClick(View v) { step(-1); }
+                         }));
         btns.addView(btn("Next", new View.OnClickListener() {
-							 @Override public void onClick(View v) { step(1); }
-						 }));
+                             @Override public void onClick(View v) { step(1); }
+                         }));
         btns.addView(btn("Replace", new View.OnClickListener() {
-							 @Override public void onClick(View v) { replaceOne(); }
-						 }));
+                             @Override public void onClick(View v) { replaceOne(); }
+                         }));
         btns.addView(btn("All", new View.OnClickListener() {
-							 @Override public void onClick(View v) { replaceAll(); }
-						 }));
+                             @Override public void onClick(View v) { replaceAll(); }
+                         }));
         root.addView(btns);
 
         TextWatcher watcher = new TextWatcher() {
@@ -105,23 +115,27 @@ public class FindReplaceDialog {
 
         CompoundButton.OnCheckedChangeListener toggler =
             new CompoundButton.OnCheckedChangeListener() {
-			@Override public void onCheckedChanged(CompoundButton v, boolean b) { rescan(); }
-		};
+            @Override public void onCheckedChanged(CompoundButton v, boolean b) { rescan(); }
+        };
         caseBox.setOnCheckedChangeListener(toggler);
         regexBox.setOnCheckedChangeListener(toggler);
 
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dlg.setContentView(root);
         dlg.getWindow().setLayout(
-			ViewGroup.LayoutParams.MATCH_PARENT,
-			ViewGroup.LayoutParams.WRAP_CONTENT);
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT);
         dlg.getWindow().setGravity(Gravity.BOTTOM);
+        dlg.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+        root.setBackgroundColor(0xFF252526);
     }
 
     private Button btn(String text, View.OnClickListener l) {
         Button b = new Button(ctx);
         b.setText(text);
         b.setAllCaps(false);
+        b.setTextColor(0xFFD4D4D4);
+        b.setBackgroundColor(0xFF0E639C);
         b.setOnClickListener(l);
         return b;
     }
@@ -156,7 +170,7 @@ public class FindReplaceDialog {
         Spannable span = new SpannableString(hay);
         for (int[] r : matches) {
             span.setSpan(new BackgroundColorSpan(0x5533AAFF), r[0], r[1],
-						 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                         Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
         }
         int cs = target.getSelectionStart();
         target.setText(span);

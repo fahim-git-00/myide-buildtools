@@ -32,6 +32,7 @@ public class TabManager {
         this.strip = strip;
         this.row = new LinearLayout(ctx);
         this.row.setOrientation(LinearLayout.HORIZONTAL);
+        this.row.setGravity(Gravity.CENTER_VERTICAL);
         this.strip.removeAllViews();
         this.strip.addView(row);
         this.strip.setHorizontalScrollBarEnabled(false);
@@ -83,13 +84,13 @@ public class TabManager {
 
     private void scrollTabIntoView(final int idx) {
         strip.post(new Runnable() {
-				@Override public void run() {
-					if (idx < 0 || idx >= row.getChildCount()) return;
-					View child = row.getChildAt(idx);
-					if (child == null) return;
-					strip.smoothScrollTo(Math.max(0, child.getLeft() - 40), 0);
-				}
-			});
+                @Override public void run() {
+                    if (idx < 0 || idx >= row.getChildCount()) return;
+                    View child = row.getChildAt(idx);
+                    if (child == null) return;
+                    strip.smoothScrollTo(Math.max(0, child.getLeft() - 40), 0);
+                }
+            });
     }
 
     private void render() {
@@ -102,33 +103,44 @@ public class TabManager {
             cell.setOrientation(LinearLayout.HORIZONTAL);
             cell.setGravity(Gravity.CENTER_VERTICAL);
             cell.setPadding(dp(10), dp(4), dp(4), dp(4));
-            cell.setBackgroundColor(i == activeIndex ? 0xFF2D2D30 : 0xFF1E1E1E);
+
+            boolean active = (i == activeIndex);
+            cell.setBackgroundColor(active ? 0xFF1E1E1E : 0xFF2D2D30);
 
             TextView label = new TextView(ctx);
             label.setText(t.title());
-            label.setTextColor(i == activeIndex ? Color.WHITE : 0xFFB0B0B0);
+            label.setTextColor(active ? 0xFFFFFFFF : 0xFFB0B0B0);
             label.setTextSize(13f);
             label.setSingleLine(true);
             label.setMaxWidth(dp(180));
             label.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+            label.setTypeface(android.graphics.Typeface.MONOSPACE);
             label.setOnClickListener(new View.OnClickListener() {
-					@Override public void onClick(View v) { select(idx); }
-				});
+                    @Override public void onClick(View v) { select(idx); }
+                });
             cell.addView(label);
 
             TextView close = new TextView(ctx);
             close.setText("  \u2715");
-            close.setTextColor(0xFFB0B0B0);
+            close.setTextColor(active ? 0xFFFFFFFF : 0xFF909090);
             close.setTextSize(13f);
-            close.setPadding(dp(6), 0, dp(6), 0);
+            close.setPadding(dp(6), 0, dp(8), 0);
             close.setOnClickListener(new View.OnClickListener() {
-					@Override public void onClick(View v) { close(idx); }
-				});
+                    @Override public void onClick(View v) { close(idx); }
+                });
             cell.addView(close);
 
+            if (active) {
+                View indicator = new View(ctx);
+                indicator.setBackgroundColor(0xFF0E639C);
+                LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(2));
+                // indicator not added here; using background color instead
+            }
+
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-				LinearLayout.LayoutParams.WRAP_CONTENT,
-				LinearLayout.LayoutParams.WRAP_CONTENT);
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.MATCH_PARENT);
             lp.rightMargin = dp(1);
             row.addView(cell, lp);
         }

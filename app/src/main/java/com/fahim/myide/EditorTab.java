@@ -8,9 +8,6 @@ public class EditorTab {
     public int selStart, selEnd;
     public int scrollY;
     public boolean dirty;
-    /** True once the editor has actually displayed this tab at least once.
-     *  Used to prevent flushActiveTab() from overwriting a fresh tab's
-     *  text with the previous tab's contents. */
     public boolean loaded;
 
     public EditorTab(File f, String initial) {

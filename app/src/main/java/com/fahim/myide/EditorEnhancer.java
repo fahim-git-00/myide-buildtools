@@ -75,11 +75,9 @@ public class EditorEnhancer {
                     return true;
                 }
 
-                // hardware shortcuts
                 if (event.isCtrlPressed()) {
                     if (keyCode == KeyEvent.KEYCODE_S) {
                         editor.getContext();
-                        // Save handled by activity via menu; just return false to let normal work
                         return false;
                     }
                 }
@@ -89,20 +87,16 @@ public class EditorEnhancer {
         });
     }
 
-    // ---- auto close ----
-
     private void handleAutoClose(char typed, int pos) {
         int idx = OPENERS.indexOf(typed);
         if (idx < 0) return;
 
-        // Skip auto-close if next char is alphanumeric (word continuation)
         Editable e = editor.getText();
         if (pos + 1 < e.length()) {
             char next = e.charAt(pos + 1);
             if (Character.isLetterOrDigit(next) || next == '_') return;
         }
 
-        // Skip for quotes if we are likely just closing an existing quote
         if (typed == '"' || typed == '\'' || typed == '`') {
             if (pos > 0) {
                 char before = e.charAt(pos - 1);
@@ -121,12 +115,10 @@ public class EditorEnhancer {
         }
     }
 
-    // ---- backspace ----
-
     private boolean handleBackspaceDelete() {
         int s = editor.getSelectionStart();
         int e = editor.getSelectionEnd();
-        if (s != e) return false; // native selection delete
+        if (s != e) return false;
         if (s <= 0) return false;
 
         Editable text = editor.getText();
@@ -147,13 +139,10 @@ public class EditorEnhancer {
         return false;
     }
 
-    // ---- newline indent ----
-
     private void insertNewlineWithIndent() {
         int selStart = editor.getSelectionStart();
         int selEnd = editor.getSelectionEnd();
         if (selStart != selEnd) {
-            // replace selection
             internalEdit = true;
             try {
                 editor.getText().replace(selStart, selEnd, "\n");
@@ -175,7 +164,6 @@ public class EditorEnhancer {
             else break;
         }
 
-        // if previous non-space char on this line is '{', add extra indent
         int j = selStart - 1;
         while (j >= lineStart && Character.isWhitespace(text.charAt(j))) j--;
         boolean extra = j >= lineStart && text.charAt(j) == '{';

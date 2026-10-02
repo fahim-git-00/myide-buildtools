@@ -220,7 +220,6 @@ public class ApkBuilder {
             File classesDir = new File(workDir, "classes");
             classesDir.mkdirs();
 
-            // ---- KOTLIN (optional, before Java) ----
             boolean hasKotlin = false;
             for (File src : sourceRoots) if (hasKtFiles(src)) { hasKotlin = true; break; }
 
@@ -236,7 +235,6 @@ public class ApkBuilder {
 
                 boolean compiled = false;
 
-                // -------- REMOTE --------
                 if ("remote".equals(mode) || ("auto".equals(mode) && kotlincJar == null)) {
                     say("Kotlin: using remote compiler (GitHub Actions)...");
                     try {
@@ -255,7 +253,6 @@ public class ApkBuilder {
                     }
                 }
 
-                // -------- LOCAL --------
                 if (!compiled && ("local".equals(mode) || "auto".equals(mode))) {
                     if (kotlincJar == null) {
                         throw new RuntimeException(
@@ -272,7 +269,6 @@ public class ApkBuilder {
                 }
             }
 
-            // ---- JAVA (ECJ) ----
             say("Compiling Java (ECJ)...");
             compileJava(androidJar, ecjFull, ecjResDir, sourceRoots, genDir, classesDir, jarDeps);
 

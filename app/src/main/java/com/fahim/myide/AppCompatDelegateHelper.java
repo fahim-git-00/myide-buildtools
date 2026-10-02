@@ -20,7 +20,6 @@ public class AppCompatDelegateHelper {
             config.uiMode = (config.uiMode & ~Configuration.UI_MODE_NIGHT_MASK)
                           | Configuration.UI_MODE_NIGHT_YES;
         }
-        // MODE_SYSTEM — leave as-is
 
         activity.getResources().updateConfiguration(config,
             activity.getResources().getDisplayMetrics());

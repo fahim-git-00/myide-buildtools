@@ -1,9 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg_light">#FFFFFF</color>
-    <color name="surface_light">#F5F5F5</color>
-    <color name="text_light">#1E1E1E</color>
-    <color name="text_dim_light">#666666</color>
-    <color name="accent_light">#0066CC</color>
-    <color name="divider_light">#DDDDDD</color>
+    <color name="bg_dark">#1E1E1E</color>
+    <color name="bg_darker">#181818</color>
+    <color name="surface">#252526</color>
+    <color name="surface_alt">#2D2D30</color>
+    <color name="surface_hover">#37373D</color>
+    <color name="divider">#3E3E42</color>
+    <color name="border">#3C3C3C</color>
+
+    <color name="text_primary">#D4D4D4</color>
+    <color name="text_secondary">#CCCCCC</color>
+    <color name="text_dim">#858585</color>
+    <color name="text_muted">#6A6A6A</color>
+
+    <color name="accent">#0E639C</color>
+    <color name="accent_hover">#1177BB</color>
+    <color name="accent_light">#4FC3F7</color>
+    <color name="success">#4EC9B0</color>
+    <color name="warning">#DCDCAA</color>
+    <color name="error">#F44747</color>
+
+    <color name="syntax_keyword">#569CD6</color>
+    <color name="syntax_string">#CE9178</color>
+    <color name="syntax_comment">#6A9955</color>
+    <color name="syntax_number">#B5CEA8</color>
+    <color name="syntax_annotation">#DCDCAA</color>
+    <color name="syntax_type">#4EC9B0</color>
+
+    <color name="gutter_bg">#1E1E1E</color>
+    <color name="gutter_text">#858585</color>
+    <color name="gutter_active">#C6C6C6</color>
+
+    <color name="bg_light">#1E1E1E</color>
+    <color name="surface_light">#252526</color>
+    <color name="text_light">#D4D4D4</color>
+    <color name="text_dim_light">#858585</color>
+    <color name="accent_light_old">#0E639C</color>
+    <color name="divider_light">#3E3E42</color>
 </resources>

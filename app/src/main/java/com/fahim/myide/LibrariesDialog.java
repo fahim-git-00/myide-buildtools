@@ -3,7 +3,6 @@ package com.fahim.myide;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.graphics.Color;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -45,10 +44,10 @@ public class LibrariesDialog {
 
         LinearLayout root = new LinearLayout(ctx);
         root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(0xFF252526);
         int pad = dp(12);
         root.setPadding(pad, pad, pad, pad);
 
-        // header
         TextView header = new TextView(ctx);
         header.setText("Maven Dependencies");
         header.setTextColor(0xFFDCDCAA);
@@ -62,7 +61,6 @@ public class LibrariesDialog {
         sub.setPadding(0, dp(4), 0, dp(8));
         root.addView(sub);
 
-        // deps list (scrollable)
         final ScrollView scroll = new ScrollView(ctx);
         final LinearLayout list = new LinearLayout(ctx);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -70,7 +68,6 @@ public class LibrariesDialog {
         root.addView(scroll, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(200)));
 
-        // add row
         LinearLayout addRow = new LinearLayout(ctx);
         addRow.setOrientation(LinearLayout.HORIZONTAL);
         addRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -86,6 +83,8 @@ public class LibrariesDialog {
         Button addBtn = new Button(ctx);
         addBtn.setText("Add");
         addBtn.setAllCaps(false);
+        addBtn.setTextColor(0xFFD4D4D4);
+        addBtn.setBackgroundColor(0xFF0E639C);
         addBtn.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
                     String s = input.getText().toString().trim();
@@ -101,10 +100,11 @@ public class LibrariesDialog {
         addRow.addView(addBtn);
         root.addView(addRow);
 
-        // resolve button
         Button resolveBtn = new Button(ctx);
         resolveBtn.setText("Resolve All");
         resolveBtn.setAllCaps(false);
+        resolveBtn.setTextColor(0xFFD4D4D4);
+        resolveBtn.setBackgroundColor(0xFF0E639C);
         resolveBtn.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
                     resolveNow(df);
@@ -112,7 +112,6 @@ public class LibrariesDialog {
             });
         root.addView(resolveBtn);
 
-        // initial load
         reload(list);
 
         new AlertDialog.Builder(ctx, android.R.style.Theme_Material_Dialog_Alert)
@@ -159,6 +158,8 @@ public class LibrariesDialog {
             Button rm = new Button(ctx);
             rm.setText("\u2716");
             rm.setAllCaps(false);
+            rm.setTextColor(0xFFD4D4D4);
+            rm.setBackgroundColor(0xFF3E3E42);
             rm.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
                         removeLine(df, c.toString());
@@ -202,10 +203,6 @@ public class LibrariesDialog {
                 }
             }).start();
     }
-
-    // =========================================================
-    //  Small helpers
-    // =========================================================
 
     private boolean isValidCoord(String s) {
         if (s == null) return false;

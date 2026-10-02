@@ -53,14 +53,25 @@ public class MainActivity extends Activity {
     private ListView fileList;
     private TextView txtProjectPath;
     private Button btnOpenFolder;
+    private Button btnRefreshTree;
     private boolean sidebarOpen = false;
+
+    private TextView txtTitle;
+    private TextView txtStatusLeft;
+    private TextView txtStatusPos;
+    private TextView txtStatusLang;
+    private TextView btnMenu;
+    private TextView btnUndo;
+    private TextView btnRedo;
+    private TextView btnSave;
+    private TextView btnBuild;
+    private TextView btnMore;
 
     private File projectRoot = null;
     private final List<FileNode> fileNodes = new ArrayList<FileNode>();
     private FileAdapter fileAdapter;
 
     private File currentFile = null;
-
     private EditorTab lastLoaded = null;
 
     @Override
@@ -77,6 +88,18 @@ public class MainActivity extends Activity {
         fileList = (ListView) findViewById(R.id.fileList);
         txtProjectPath = (TextView) findViewById(R.id.txtProjectPath);
         btnOpenFolder = (Button) findViewById(R.id.btnOpenFolder);
+        btnRefreshTree = (Button) findViewById(R.id.btnRefreshTree);
+
+        txtTitle = (TextView) findViewById(R.id.txtTitle);
+        txtStatusLeft = (TextView) findViewById(R.id.txtStatusLeft);
+        txtStatusPos = (TextView) findViewById(R.id.txtStatusPos);
+        txtStatusLang = (TextView) findViewById(R.id.txtStatusLang);
+        btnMenu = (TextView) findViewById(R.id.btnMenu);
+        btnUndo = (TextView) findViewById(R.id.btnUndo);
+        btnRedo = (TextView) findViewById(R.id.btnRedo);
+        btnSave = (TextView) findViewById(R.id.btnSave);
+        btnBuild = (TextView) findViewById(R.id.btnBuild);
+        btnMore = (TextView) findViewById(R.id.btnMore);
 
         fileAdapter = new FileAdapter(this, fileNodes);
         fileList.setAdapter(fileAdapter);
@@ -85,8 +108,105 @@ public class MainActivity extends Activity {
         setupUndo();
         enhancer = new EditorEnhancer(editor);
 
+        wireToolbar();
+        wireSidebar();
+
+        editor.setText(
+            "package com.example.myapp;\n\n" +
+            "import android.app.Activity;\n" +
+            "import android.os.Bundle;\n\n" +
+            "public class MainActivity extends Activity {\n" +
+            "    @Override protected void onCreate(Bundle b) {\n" +
+            "        super.onCreate(b);\n" +
+            "        setContentView(R.layout.main);\n" +
+            "    }\n" +
+            "}\n"
+        );
+
+        SyntaxHighlighter.highlight(editor.getText(), currentLang());
+        updateLineNumbers(editor.getText().toString());
+        updateStatusBar();
+
+        editor.addTextChangedListener(new TextWatcher() {
+                @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
+                @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
+                @Override
+                public void afterTextChanged(Editable s) {
+                    if (isHighlighting) return;
+                    isHighlighting = true;
+                    SyntaxHighlighter.highlight(s, currentLang());
+                    updateLineNumbers(s.toString());
+                    updateStatusBar();
+                    isHighlighting = false;
+                }
+            });
+
+        editor.setOnKeyListener(new View.OnKeyListener() {
+                @Override public boolean onKey(View v, int keyCode, KeyEvent event) {
+                    if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                    if (event.isCtrlPressed()) {
+                        if (keyCode == KeyEvent.KEYCODE_S) { saveFile(); return true; }
+                        if (keyCode == KeyEvent.KEYCODE_F) {
+                            new FindReplaceDialog(MainActivity.this, editor).show();
+                            return true;
+                        }
+                        if (keyCode == KeyEvent.KEYCODE_Z) { flushActiveTab(); undoMgr.undo(); return true; }
+                        if (keyCode == KeyEvent.KEYCODE_Y) { flushActiveTab(); undoMgr.redo(); return true; }
+                        if (keyCode == KeyEvent.KEYCODE_B) { runBuild(); return true; }
+                    }
+                    return false;
+                }
+            });
+
+        requestStoragePermissionIfNeeded();
+        updateTitle();
+    }
+
+    private void wireToolbar() {
+        btnMenu.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    if (sidebarOpen) closeSidebar();
+                    else if (projectRoot == null) pickProjectFolder();
+                    else openSidebar();
+                }
+            });
+
+        btnUndo.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    flushActiveTab();
+                    undoMgr.undo();
+                }
+            });
+
+        btnRedo.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    flushActiveTab();
+                    undoMgr.redo();
+                }
+            });
+
+        btnSave.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { saveFile(); }
+            });
+
+        btnBuild.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { runBuild(); }
+            });
+
+        btnMore.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    openOptionsMenu();
+                }
+            });
+    }
+
+    private void wireSidebar() {
         btnOpenFolder.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) { pickProjectFolder(); }
+            });
+
+        btnRefreshTree.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { reloadFileTree(); }
             });
 
         dimLayer.setOnClickListener(new View.OnClickListener() {
@@ -112,54 +232,6 @@ public class MainActivity extends Activity {
                     return true;
                 }
             });
-
-        editor.setText(
-            "package com.example.myapp;\n\n" +
-            "import android.app.Activity;\n" +
-            "import android.os.Bundle;\n\n" +
-            "public class MainActivity extends Activity {\n" +
-            "    @Override protected void onCreate(Bundle b) {\n" +
-            "        super.onCreate(b);\n" +
-            "        setContentView(R.layout.main);\n" +
-            "    }\n" +
-            "}\n"
-        );
-
-        SyntaxHighlighter.highlight(editor.getText(), currentLang());
-        updateLineNumbers(editor.getText().toString());
-
-        editor.addTextChangedListener(new TextWatcher() {
-                @Override public void beforeTextChanged(CharSequence s, int st, int c, int a) {}
-                @Override public void onTextChanged(CharSequence s, int st, int b, int c) {}
-                @Override
-                public void afterTextChanged(Editable s) {
-                    if (isHighlighting) return;
-                    isHighlighting = true;
-                    SyntaxHighlighter.highlight(s, currentLang());
-                    updateLineNumbers(s.toString());
-                    isHighlighting = false;
-                }
-            });
-
-        editor.setOnKeyListener(new View.OnKeyListener() {
-                @Override public boolean onKey(View v, int keyCode, KeyEvent event) {
-                    if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
-                    if (event.isCtrlPressed()) {
-                        if (keyCode == KeyEvent.KEYCODE_S) { saveFile(); return true; }
-                        if (keyCode == KeyEvent.KEYCODE_F) {
-                            new FindReplaceDialog(MainActivity.this, editor).show();
-                            return true;
-                        }
-                        if (keyCode == KeyEvent.KEYCODE_Z) { flushActiveTab(); undoMgr.undo(); return true; }
-                        if (keyCode == KeyEvent.KEYCODE_Y) { flushActiveTab(); undoMgr.redo(); return true; }
-                        if (keyCode == KeyEvent.KEYCODE_B) { runBuild(); return true; }
-                    }
-                    return false;
-                }
-            });
-
-        requestStoragePermissionIfNeeded();
-        updateTitle();
     }
 
     private void applyTheme() {
@@ -204,6 +276,7 @@ public class MainActivity extends Activity {
                         isHighlighting = false;
                         SyntaxHighlighter.highlight(editor.getText(), currentLang());
                         updateLineNumbers("");
+                        updateStatusBar();
                         updateTitle();
                     }
                 }
@@ -228,6 +301,7 @@ public class MainActivity extends Activity {
             });
         isHighlighting = false;
         updateTitle();
+        updateStatusBar();
     }
 
     private void flushTab(EditorTab t) {
@@ -252,6 +326,7 @@ public class MainActivity extends Activity {
             EditorTab t = tabs.openOrFocus(f, text);
             currentFile = t.file;
             updateTitle();
+            updateStatusBar();
         } catch (Exception e) {
             toast("Open failed: " + e.getMessage());
         }
@@ -1060,6 +1135,7 @@ public class MainActivity extends Activity {
                 tabs.refreshTitles();
             }
             toast("Saved: " + currentFile.getName());
+            updateStatusBar();
         } catch (Exception e) {
             toast("Save failed: " + e.getMessage());
         }
@@ -1101,6 +1177,37 @@ public class MainActivity extends Activity {
         lineNumbers.setText(sb.toString());
     }
 
+    private void updateStatusBar() {
+        if (txtStatusPos == null) return;
+        int sel = editor.getSelectionStart();
+        if (sel < 0) sel = 0;
+        String text = editor.getText().toString();
+        if (sel > text.length()) sel = text.length();
+        int line = 1, col = 1;
+        for (int i = 0; i < sel; i++) {
+            if (text.charAt(i) == '\n') { line++; col = 1; }
+            else col++;
+        }
+        txtStatusPos.setText("Ln " + line + ", Col " + col);
+        txtStatusLang.setText(langName(currentLang()));
+        if (currentFile != null) {
+            txtStatusLeft.setText(currentFile.getName());
+        } else {
+            txtStatusLeft.setText("Ready");
+        }
+    }
+
+    private String langName(int lang) {
+        switch (lang) {
+            case SyntaxHighlighter.LANG_XML: return "XML";
+            case SyntaxHighlighter.LANG_JSON: return "JSON";
+            case SyntaxHighlighter.LANG_GRADLE: return "Gradle";
+            case SyntaxHighlighter.LANG_MARKDOWN: return "Markdown";
+            case SyntaxHighlighter.LANG_KOTLIN: return "Kotlin";
+            default: return "Java";
+        }
+    }
+
     private int currentLang() {
         String path = null;
         if (currentFile != null) path = currentFile.getAbsolutePath();
@@ -1110,6 +1217,11 @@ public class MainActivity extends Activity {
     }
 
     private void updateTitle() {
+        if (txtTitle != null) {
+            txtTitle.setText(currentFile != null
+                ? "MyIDE — " + currentFile.getName()
+                : "MyIDE");
+        }
         setTitle("MyIDE" + (currentFile != null ? " \u2014 " + currentFile.getName() : ""));
     }
 

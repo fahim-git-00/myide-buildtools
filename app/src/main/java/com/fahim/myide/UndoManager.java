@@ -35,17 +35,15 @@ public class UndoManager {
         this.lastCommitted = edit.getText().toString();
         this.lastCaret = edit.getSelectionStart();
         edit.addTextChangedListener(new TextWatcher() {
-				@Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
-				@Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
-				@Override public void afterTextChanged(Editable s) {
-					if (selfEdit) return;
-					scheduleCommit(s.toString());
-				}
-			});
+                @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+                @Override public void afterTextChanged(Editable s) {
+                    if (selfEdit) return;
+                    scheduleCommit(s.toString());
+                }
+            });
     }
 
-    /** Call this before any programmatic replacement of the editor's contents
-     *  (e.g. switching tabs) so the change isn't recorded as a user edit. */
     public void reset() {
         if (pending != null) { h.removeCallbacks(pending); pending = null; }
         undo.clear();

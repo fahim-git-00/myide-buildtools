@@ -47,10 +47,6 @@ public class MavenResolver {
         if (progress != null) progress.onDone(ok, s);
     }
 
-    // =========================================================
-    //  Public API
-    // =========================================================
-
     public void resolve(File depsFile) {
         try {
             if (!depsFile.exists()) {
@@ -84,7 +80,6 @@ public class MavenResolver {
                 }
             }
 
-            // ---- Deduplicate by group:artifact, keep highest version ----
             Map<String, Coord> winners = new HashMap<String, Coord>();
             for (Coord c : resolved) {
                 String key = c.group + ":" + c.artifact;
@@ -113,10 +108,6 @@ public class MavenResolver {
         }
     }
 
-    // =========================================================
-    //  Core per-dep logic
-    // =========================================================
-
     private void resolveOne(Coord c, List<Coord> out, Deque<Coord> queue) throws Exception {
         File pom = ensureInCache(c, "pom", c.artifact + "-" + c.version + ".pom");
         String pomText = readFile(pom);
@@ -141,10 +132,6 @@ public class MavenResolver {
         }
     }
 
-    // =========================================================
-    //  Version comparison
-    // =========================================================
-
     private static int compareVersions(String a, String b) {
         if (a == null) return -1;
         if (b == null) return 1;
@@ -161,10 +148,6 @@ public class MavenResolver {
         }
         return 0;
     }
-
-    // =========================================================
-    //  Cache / download
-    // =========================================================
 
     private File ensureInCache(Coord c, String ext, String fileName) throws Exception {
         File dir = new File(cacheRoot(),
@@ -210,10 +193,6 @@ public class MavenResolver {
         conn.disconnect();
     }
 
-    // =========================================================
-    //  POM parsing
-    // =========================================================
-
     private static final Pattern P_DEPENDENCIES =
         Pattern.compile("<dependencies>(.*?)</dependencies>", Pattern.DOTALL);
     private static final Pattern P_DEP =
@@ -253,10 +232,6 @@ public class MavenResolver {
         if (m.find()) return m.group(1).trim();
         return null;
     }
-
-    // =========================================================
-    //  Deps file I/O
-    // =========================================================
 
     public static List<Coord> parseDepsFile(File f) {
         List<Coord> out = new ArrayList<Coord>();
@@ -299,10 +274,6 @@ public class MavenResolver {
         fos.close();
     }
 
-    // =========================================================
-    //  Coord
-    // =========================================================
-
     public static class Coord {
         public String group;
         public String artifact;
@@ -312,10 +283,6 @@ public class MavenResolver {
             return group + ":" + artifact + ":" + version;
         }
     }
-
-    // =========================================================
-    //  Copy cache files into a project build dir
-    // =========================================================
 
     public static int copyResolvedToDir(Context ctx, File depsFile, File destDir) throws Exception {
         List<Coord> coords = parseDepsFile(depsFile);
