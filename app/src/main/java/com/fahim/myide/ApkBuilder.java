@@ -166,12 +166,6 @@ public class ApkBuilder {
                     copyFile(aarClasses, dest);
                     jarDeps.add(dest);
                 }
-
-                // native libs inside AAR
-                File aarJni = new File(extractDir, "jni");
-                if (aarJni.exists()) {
-                    say("AAR has JNI: " + aar.getName());
-                }
             }
 
             File patchedManifest = new File(workDir, "AndroidManifest.xml");
@@ -208,7 +202,7 @@ public class ApkBuilder {
             classesDir.mkdirs();
             compileJava(androidJar, ecjFull, ecjResDir, sourceRoots, genDir, classesDir, jarDeps);
 
-            say("Dexing (d8, multidex)...");
+            say("Dexing (R8)...");
             File dexDir = new File(workDir, "dex");
             dexDir.mkdirs();
             compileDex(androidJar, d8Zip, classesDir, dexDir, jarDeps, minSdk);
@@ -372,16 +366,18 @@ public class ApkBuilder {
             null,
             ctx.getClassLoader());
 
-        Class<?> d8 = loader.loadClass("com.android.tools.r8.D8");
-        Method main = d8.getMethod("main", String[].class);
+        Class<?> r8 = loader.loadClass("com.android.tools.r8.R8");
+        Method main = r8.getMethod("main", String[].class);
 
         List<String> args = new ArrayList<String>();
         args.add("--output"); args.add(outputDir.getAbsolutePath());
         args.add("--min-api"); args.add(String.valueOf(minSdk));
         args.add("--lib"); args.add(androidJar.getAbsolutePath());
+        args.add("--release");
         for (File f : classFiles) args.add(f.getAbsolutePath());
         for (File j : extraJars) {
             if (j != null && j.exists() && j.getName().endsWith(".jar")) {
+                args.add("--lib");
                 args.add(j.getAbsolutePath());
             }
         }
@@ -389,7 +385,7 @@ public class ApkBuilder {
         try {
             main.invoke(null, (Object) args.toArray(new String[0]));
         } catch (InvocationTargetException ite) {
-            throw new RuntimeException("D8 error: " + causeChain(ite));
+            throw new RuntimeException("R8 error: " + causeChain(ite));
         }
     }
 
