@@ -142,3 +142,22 @@ cd "/storage/emulated/0/new P/MyIDE"
 git add -A
 git commit -m "Batch 1: editor polish (auto-close, indent, tab, shortcuts)"
 git push
+#!/bin/bash
+# Push MyIDE project to GitHub
+# Usage: ./push.sh "commit message"
+set -e
+MSG="${1:-Update MyIDE}"
+echo "==> Initializing git (if needed)"
+git init 2>/dev/null || true
+echo "==> Staging all files"
+git add -A
+echo "==> Committing: $MSG"
+git commit -m "$MSG" || echo "(nothing to commit)"
+echo "==> Ensuring remote 'origin'"
+if ! git remote get-url origin >/dev/null 2>&1; then     git remote add origin https://github.com/fahim-git-00/myide-buildtools.git; else     git remote set-url origin https://github.com/fahim-git-00/myide-buildtools.git; fi
+echo "==> Ensuring branch is 'main'"
+git branch -M main
+echo "==> Pulling remote (rebase to avoid conflicts)"
+git pull --rebase origin main || true
+echo "==> Pushing to origin/main"
+git push -u origin main
