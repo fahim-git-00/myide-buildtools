@@ -115,10 +115,13 @@ jobs:
           out_root = pathlib.Path("ktsrc")
           out_root.mkdir(exist_ok=True)
 
-          for item in payload.split("\u0001"):
+          for item in payload.split("~"):
               if not item:
                   continue
-              name, b64 = item.split("\u0000", 1)
+              if "|" not in item:
+                  print("Skipping malformed item:", item[:60])
+                  continue
+              name, b64 = item.split("|", 1)
               data = base64.b64decode(b64)
               (out_root / name).write_bytes(data)
               print("wrote", name, len(data), "bytes")

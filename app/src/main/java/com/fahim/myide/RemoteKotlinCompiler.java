@@ -88,8 +88,8 @@ public class RemoteKotlinCompiler {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < files.size(); i++) {
             File f = files.get(i);
-            if (i > 0) sb.append('\u0001');
-            sb.append(f.getName()).append('\u0000');
+            if (i > 0) sb.append('~');
+            sb.append(f.getName()).append('|');
             sb.append(android.util.Base64.encodeToString(readAll(f), android.util.Base64.NO_WRAP));
         }
         return sb.toString();
