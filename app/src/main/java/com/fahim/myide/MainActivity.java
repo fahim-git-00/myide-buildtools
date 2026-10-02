@@ -122,7 +122,7 @@ public class MainActivity extends Activity {
             "}\n"
         );
 
-        SyntaxHighlighter.highlight(editor.getText());
+        SyntaxHighlighter.highlight(editor.getText(), currentLang());
         updateLineNumbers(editor.getText().toString());
 
         editor.addTextChangedListener(new TextWatcher() {
@@ -132,7 +132,7 @@ public class MainActivity extends Activity {
                 public void afterTextChanged(Editable s) {
                     if (isHighlighting) return;
                     isHighlighting = true;
-                    SyntaxHighlighter.highlight(s);
+                    SyntaxHighlighter.highlight(s, currentLang());
                     updateLineNumbers(s.toString());
                     isHighlighting = false;
                 }
@@ -186,12 +186,12 @@ public class MainActivity extends Activity {
                     if (lastLoaded == t) lastLoaded = null;
 
                     if (tabs.getTabs().isEmpty()) {
+                        currentFile = null;
                         isHighlighting = true;
                         editor.setText("");
                         isHighlighting = false;
-                        SyntaxHighlighter.highlight(editor.getText());
+                        SyntaxHighlighter.highlight(editor.getText(), currentLang());
                         updateLineNumbers("");
-                        currentFile = null;
                         updateTitle();
                     }
                 }
@@ -203,9 +203,10 @@ public class MainActivity extends Activity {
     }
 
     private void applyTabToEditor(final EditorTab t) {
+        currentFile = t.file;
         isHighlighting = true;
         editor.setText(t.text);
-        SyntaxHighlighter.highlight(editor.getText());
+        SyntaxHighlighter.highlight(editor.getText(), currentLang());
         updateLineNumbers(t.text);
         int s = Math.max(0, Math.min(t.selStart, t.text.length()));
         int e = Math.max(0, Math.min(t.selEnd,   t.text.length()));
@@ -214,7 +215,6 @@ public class MainActivity extends Activity {
                 @Override public void run() { editor.scrollTo(0, t.scrollY); }
             });
         isHighlighting = false;
-        currentFile = t.file;
         updateTitle();
     }
 
@@ -1063,6 +1063,14 @@ public class MainActivity extends Activity {
             if (i < lines) sb.append('\n');
         }
         lineNumbers.setText(sb.toString());
+    }
+
+    private int currentLang() {
+        String path = null;
+        if (currentFile != null) path = currentFile.getAbsolutePath();
+        else if (lastLoaded != null && lastLoaded.file != null)
+            path = lastLoaded.file.getAbsolutePath();
+        return SyntaxHighlighter.detectLang(path);
     }
 
     private void updateTitle() {

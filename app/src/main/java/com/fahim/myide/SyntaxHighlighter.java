@@ -9,13 +9,36 @@ import java.util.regex.Pattern;
 
 public class SyntaxHighlighter {
 
-    private static final int COLOR_KEYWORD   = 0xFF569CD6;
-    private static final int COLOR_STRING    = 0xFFCE9178;
-    private static final int COLOR_COMMENT   = 0xFF6A9955;
-    private static final int COLOR_NUMBER    = 0xFFB5CEA8;
-    private static final int COLOR_ANNOTATION= 0xFFDCDCAA;
+    // ===== Colors (VS Code dark-like) =====
+    private static final int C_KEYWORD    = 0xFF569CD6;
+    private static final int C_STRING     = 0xFFCE9178;
+    private static final int C_COMMENT    = 0xFF6A9955;
+    private static final int C_NUMBER     = 0xFFB5CEA8;
+    private static final int C_ANNOTATION = 0xFFDCDCAA;
+    private static final int C_TYPE       = 0xFF4EC9B0; // class names / types
+    private static final int C_XML_TAG    = 0xFF569CD6;
+    private static final int C_XML_ATTR   = 0xFF9CDCFE;
+    private static final int C_XML_STR    = 0xFFCE9178;
 
-    private static final String[] KEYWORDS = {
+    // ===== Language: detect from filename =====
+    public static int detectLang(String path) {
+        if (path == null) return LANG_JAVA;
+        String p = path.toLowerCase();
+        if (p.endsWith(".xml"))    return LANG_XML;
+        if (p.endsWith(".json"))   return LANG_JSON;
+        if (p.endsWith(".gradle")) return LANG_GRADLE;
+        if (p.endsWith(".md"))     return LANG_MARKDOWN;
+        return LANG_JAVA;
+    }
+
+    public static final int LANG_JAVA = 0;
+    public static final int LANG_XML = 1;
+    public static final int LANG_JSON = 2;
+    public static final int LANG_GRADLE = 3;
+    public static final int LANG_MARKDOWN = 4;
+
+    // ===== Java keywords =====
+    private static final String[] JAVA_KW = {
         "abstract","assert","boolean","break","byte","case","catch","char",
         "class","const","continue","default","do","double","else","enum",
         "extends","final","finally","float","for","goto","if","implements",
@@ -26,46 +49,156 @@ public class SyntaxHighlighter {
         "true","false","null"
     };
 
-    private static final Pattern P_COMMENT =
-	Pattern.compile("//[^\\n]*|/\\*[\\s\\S]*?\\*/");
-    private static final Pattern P_STRING =
-	Pattern.compile("\"(?:\\\\.|[^\"\\\\])*\"");
-    private static final Pattern P_NUMBER =
-	Pattern.compile("\\b\\d+(\\.\\d+)?[fFdDlL]?\\b");
-    private static final Pattern P_ANNOTATION =
-	Pattern.compile("@\\w+");
+    // ===== Groovy/Gradle extras =====
+    private static final String[] GRADLE_KW = {
+        "apply","plugin","android","dependencies","repositories",
+        "buildscript","allprojects","task","def","ext","implementation",
+        "compile","compileSdk","minSdk","targetSdk","buildToolsVersion",
+        "defaultConfig","buildTypes","release","debug","proguardFiles",
+        "minifyEnabled","testImplementation","api","classpath","mavenCentral",
+        "google","jcenter"
+    };
 
-    private static final Pattern P_KEYWORD;
+    // ===== Patterns (compiled once) =====
+    private static final Pattern P_JAVA_COMMENT =
+        Pattern.compile("//[^\\n]*|/\\*[\\s\\S]*?\\*/");
+    private static final Pattern P_JAVA_STRING =
+        Pattern.compile("\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'");
+    private static final Pattern P_JAVA_NUMBER =
+        Pattern.compile("\\b\\d+(\\.\\d+)?[fFdDlL]?\\b");
+    private static final Pattern P_JAVA_ANNOT =
+        Pattern.compile("@\\w+");
+    private static final Pattern P_JAVA_TYPE =
+        Pattern.compile("\\b[A-Z][A-Za-z0-9_]*\\b");
+
+    private static final Pattern P_XML_COMMENT =
+        Pattern.compile("<!--[\\s\\S]*?-->");
+    private static final Pattern P_XML_TAG =
+        Pattern.compile("</?[A-Za-z_][A-Za-z0-9_.:-]*");
+    private static final Pattern P_XML_CLOSE =
+        Pattern.compile("/?>");
+    private static final Pattern P_XML_ATTR =
+        Pattern.compile("\\b[A-Za-z_][A-Za-z0-9_.:-]*(?=\\s*=)");
+    private static final Pattern P_XML_STRING =
+        Pattern.compile("\"[^\"]*\"");
+    private static final Pattern P_XML_DECL =
+        Pattern.compile("<\\?[\\s\\S]*?\\?>");
+
+    private static final Pattern P_JSON_STRING =
+        Pattern.compile("\"(?:\\\\.|[^\"\\\\])*\"");
+    private static final Pattern P_JSON_NUMBER =
+        Pattern.compile("\\b-?\\d+(\\.\\d+)?([eE][-+]?\\d+)?\\b");
+    private static final Pattern P_JSON_KW =
+        Pattern.compile("\\b(?:true|false|null)\\b");
+
+    private static final Pattern P_MD_HEADER =
+        Pattern.compile("^#{1,6} .*$", Pattern.MULTILINE);
+    private static final Pattern P_MD_CODE =
+        Pattern.compile("`[^`]+`");
+    private static final Pattern P_MD_BOLD =
+        Pattern.compile("\\*\\*[^*]+\\*\\*");
+    private static final Pattern P_MD_LINK =
+        Pattern.compile("\\[[^\\]]+\\]\\([^)]+\\)");
+
+    private static final Pattern P_JAVA_KW_RE;
+    private static final Pattern P_GRADLE_KW_RE;
     static {
         StringBuilder sb = new StringBuilder("\\b(?:");
-        for (int i = 0; i < KEYWORDS.length; i++) {
+        for (int i = 0; i < JAVA_KW.length; i++) {
             if (i > 0) sb.append('|');
-            sb.append(KEYWORDS[i]);
+            sb.append(JAVA_KW[i]);
         }
         sb.append(")\\b");
-        P_KEYWORD = Pattern.compile(sb.toString());
+        P_JAVA_KW_RE = Pattern.compile(sb.toString());
+
+        StringBuilder sb2 = new StringBuilder("\\b(?:");
+        for (int i = 0; i < GRADLE_KW.length; i++) {
+            if (i > 0) sb2.append('|');
+            sb2.append(GRADLE_KW[i]);
+        }
+        sb2.append(")\\b");
+        P_GRADLE_KW_RE = Pattern.compile(sb2.toString());
     }
 
+    // ===== Public entry =====
     public static void highlight(Spannable text) {
-        ForegroundColorSpan[] old = text.getSpans(
-            0, text.length(), ForegroundColorSpan.class);
-        for (ForegroundColorSpan s : old) {
-            text.removeSpan(s);
-        }
+        highlight(text, LANG_JAVA);
+    }
 
+    public static void highlight(Spannable text, int lang) {
+        clearSpans(text);
         String s = text.toString();
 
-        applyPattern(text, s, P_COMMENT, COLOR_COMMENT);
-        applyPattern(text, s, P_STRING, COLOR_STRING);
-        applyPattern(text, s, P_ANNOTATION, COLOR_ANNOTATION);
-        applyPattern(text, s, P_NUMBER, COLOR_NUMBER);
-        applyPattern(text, s, P_KEYWORD, COLOR_KEYWORD);
-        applyPattern(text, s, P_COMMENT, COLOR_COMMENT);
-        applyPattern(text, s, P_STRING, COLOR_STRING);
+        switch (lang) {
+            case LANG_XML:      highlightXml(text, s); break;
+            case LANG_JSON:     highlightJson(text, s); break;
+            case LANG_GRADLE:   highlightGradle(text, s); break;
+            case LANG_MARKDOWN: highlightMarkdown(text, s); break;
+            default:            highlightJava(text, s); break;
+        }
     }
 
-    private static void applyPattern(
-		Spannable text, String source, Pattern p, int color) {
+    // ===== Clear =====
+    private static void clearSpans(Spannable text) {
+        ForegroundColorSpan[] old = text.getSpans(
+            0, text.length(), ForegroundColorSpan.class);
+        for (ForegroundColorSpan sp : old) text.removeSpan(sp);
+    }
+
+    // ===== Java =====
+    private static void highlightJava(Spannable t, String s) {
+        // comments & strings first (they take priority)
+        apply(t, s, P_JAVA_COMMENT, C_COMMENT);
+        apply(t, s, P_JAVA_STRING, C_STRING);
+        // avoid re-coloring inside them? simple approach: apply others, then reapply comments/strings
+        apply(t, s, P_JAVA_ANNOT, C_ANNOTATION);
+        apply(t, s, P_JAVA_NUMBER, C_NUMBER);
+        apply(t, s, P_JAVA_TYPE, C_TYPE);
+        apply(t, s, P_JAVA_KW_RE, C_KEYWORD);
+        // re-apply comments & strings to win over
+        apply(t, s, P_JAVA_COMMENT, C_COMMENT);
+        apply(t, s, P_JAVA_STRING, C_STRING);
+    }
+
+    // ===== XML =====
+    private static void highlightXml(Spannable t, String s) {
+        apply(t, s, P_XML_COMMENT, C_COMMENT);
+        apply(t, s, P_XML_DECL, C_KEYWORD);
+        apply(t, s, P_XML_TAG, C_XML_TAG);
+        apply(t, s, P_XML_CLOSE, C_XML_TAG);
+        apply(t, s, P_XML_ATTR, C_XML_ATTR);
+        apply(t, s, P_XML_STRING, C_XML_STR);
+        apply(t, s, P_XML_COMMENT, C_COMMENT);
+    }
+
+    // ===== JSON =====
+    private static void highlightJson(Spannable t, String s) {
+        apply(t, s, P_JSON_STRING, C_STRING);
+        apply(t, s, P_JSON_NUMBER, C_NUMBER);
+        apply(t, s, P_JSON_KW, C_KEYWORD);
+        apply(t, s, P_JSON_STRING, C_STRING);
+    }
+
+    // ===== Gradle/Groovy =====
+    private static void highlightGradle(Spannable t, String s) {
+        apply(t, s, P_JAVA_COMMENT, C_COMMENT);
+        apply(t, s, P_JAVA_STRING, C_STRING);
+        apply(t, s, P_JAVA_NUMBER, C_NUMBER);
+        apply(t, s, P_GRADLE_KW_RE, C_KEYWORD);
+        apply(t, s, P_JAVA_COMMENT, C_COMMENT);
+        apply(t, s, P_JAVA_STRING, C_STRING);
+    }
+
+    // ===== Markdown =====
+    private static void highlightMarkdown(Spannable t, String s) {
+        apply(t, s, P_MD_HEADER, C_KEYWORD);
+        apply(t, s, P_MD_CODE, C_STRING);
+        apply(t, s, P_MD_BOLD, C_ANNOTATION);
+        apply(t, s, P_MD_LINK, C_TYPE);
+    }
+
+    // ===== Core apply =====
+    private static void apply(Spannable text, String source, Pattern p, int color) {
         Matcher m = p.matcher(source);
         while (m.find()) {
             text.setSpan(
