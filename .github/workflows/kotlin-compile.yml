@@ -5,10 +5,10 @@ on:
     inputs:
       chunk_count:
         description: 'Number of payload chunks'
-        required: true
+        required: false
         default: '1'
       chunk_0:
-        description: 'Chunk 0 (path\u0000base64\u0001path\u0000base64...)'
+        description: 'Chunk 0'
         required: false
         default: ''
       chunk_1:

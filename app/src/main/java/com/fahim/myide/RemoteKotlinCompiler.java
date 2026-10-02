@@ -19,17 +19,6 @@ import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-/**
- * Compiles Kotlin on GitHub Actions (server model).
- *
- * Flow:
- *   1. User's .kt files are base64-encoded and POSTed to GitHub as a
- *      workflow_dispatch input.
- *   2. Workflow compiles them with kotlinc on ubuntu-latest.
- *   3. Workflow uploads a "kotlin-classes" artifact (zip of .class files).
- *   4. App polls runs, finds the run, downloads the artifact zip.
- *   5. App unzips .class files into classesDir for the existing D8 pipeline.
- */
 public class RemoteKotlinCompiler {
 
     public interface Progress {
@@ -66,10 +55,6 @@ public class RemoteKotlinCompiler {
         return token() != null && token().length() > 0;
     }
 
-    /**
-     * @param sourceRoots list of directories containing .kt files
-     * @param classesDir  output dir for downloaded .class files
-     */
     public void compile(List<File> sourceRoots, File classesDir) throws Exception {
         if (!hasToken()) throw new RuntimeException("GitHub token not set. Open Settings → GitHub Token.");
 
@@ -99,9 +84,6 @@ public class RemoteKotlinCompiler {
         say("Remote Kotlin compile done");
     }
 
-    // =========================================================
-    //  Payload: "path1\u0000base64data1\u0001path2\u0000base64data2"
-    // =========================================================
     private String buildPayload(List<File> files) throws Exception {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < files.size(); i++) {
@@ -123,10 +105,6 @@ public class RemoteKotlinCompiler {
         return out.toByteArray();
     }
 
-    // =========================================================
-    //  GitHub API
-    // =========================================================
-
     private long triggerWorkflow(String payload) throws Exception {
         URL url = new URL(API + "/repos/" + REPO + "/actions/workflows/" + WORKFLOW_FILE + "/dispatches");
         HttpURLConnection c = (HttpURLConnection) url.openConnection();
@@ -140,10 +118,10 @@ public class RemoteKotlinCompiler {
         body.put("ref", "main");
 
         JSONObject inputs = new JSONObject();
-        // GitHub limits inputs to 65535 chars; if bigger, chunk into multiple inputs
         int chunkSize = 60000;
         int chunks = (payload.length() + chunkSize - 1) / chunkSize;
-        inputs.put("chunk_count", chunks);
+        if (chunks > 10) throw new RuntimeException("Payload too large: " + chunks + " chunks (max 10)");
+        inputs.put("chunk_count", String.valueOf(chunks));
         for (int i = 0; i < chunks; i++) {
             int s = i * chunkSize;
             int e = Math.min(payload.length(), s + chunkSize);
@@ -161,7 +139,7 @@ public class RemoteKotlinCompiler {
         }
 
         say("Triggered, waiting for run to appear...");
-        Thread.sleep(3000);
+        Thread.sleep(4000);
 
         long id = findRecentRun();
         if (id <= 0) throw new RuntimeException("Could not find new run");
@@ -255,10 +233,6 @@ public class RemoteKotlinCompiler {
     private String readError(HttpURLConnection c) {
         try { return readAll(c); } catch (Exception e) { return ""; }
     }
-
-    // =========================================================
-    //  Helpers
-    // =========================================================
 
     private void findKtFiles(File dir, List<File> out) {
         if (dir == null || !dir.exists()) return;
