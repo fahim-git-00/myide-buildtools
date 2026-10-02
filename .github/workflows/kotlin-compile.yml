@@ -137,7 +137,6 @@ jobs:
         run: |
           mkdir -p kotlin-classes
           $KOTLINC \
-            -no-stdlib -no-reflect \
             -jvm-target 1.8 \
             -classpath "$ANDROID_HOME/platforms/android-35/android.jar" \
             -d kotlin-classes \
