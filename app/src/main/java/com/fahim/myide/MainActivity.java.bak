@@ -150,6 +150,8 @@ public class MainActivity extends Activity {
         tabs = new TabManager(this, strip);
         tabs.setListener(new TabManager.Listener() {
                 @Override public void onTabSelected(EditorTab t) {
+                    // Flush the previously loaded tab if there was one and it's
+                    // different from the tab being selected now.
                     if (lastLoaded != null && lastLoaded != t && lastLoaded.loaded) {
                         flushTab(lastLoaded);
                     }
@@ -161,6 +163,7 @@ public class MainActivity extends Activity {
                 @Override public void onTabClosed(EditorTab t) {
                     if (lastLoaded == t) lastLoaded = null;
 
+                    // If no tabs remain, clear the editor completely.
                     if (tabs.getTabs().isEmpty()) {
                         isHighlighting = true;
                         editor.setText("");
@@ -194,6 +197,7 @@ public class MainActivity extends Activity {
         updateTitle();
     }
 
+    /** Flush the current editor contents into a specific tab. */
     private void flushTab(EditorTab t) {
         if (t == null || t != lastLoaded) return;
         String now = editor.getText().toString();
@@ -206,6 +210,7 @@ public class MainActivity extends Activity {
         t.scrollY  = editor.getScrollY();
     }
 
+    /** Called before build/save — flushes the currently displayed tab. */
     private void flushActiveTab() {
         if (lastLoaded != null) flushTab(lastLoaded);
     }
@@ -230,6 +235,8 @@ public class MainActivity extends Activity {
                 tabs.close(i);
             }
         }
+        // The TabManager.Listener.onTabClosed handles editor clearing when
+        // the last tab is removed.
     }
 
     // =========================================================
@@ -779,64 +786,17 @@ public class MainActivity extends Activity {
             return;
         }
         flushActiveTab();
-        startBuild();
-    }
-
-    private void startBuild() {
-        final EditText minEt = new EditText(this);
-        minEt.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-        minEt.setText("21");
-        minEt.setHint("min SDK (e.g. 21)");
-
-        final EditText targetEt = new EditText(this);
-        targetEt.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
-        targetEt.setText("34");
-        targetEt.setHint("target SDK (e.g. 34)");
-
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        int pad = (int)(16 * getResources().getDisplayMetrics().density);
-        layout.setPadding(pad, pad, pad, pad);
-
-        TextView minLbl = new TextView(this);
-        minLbl.setText("Minimum SDK:");
-        minLbl.setTextColor(0xFFDCDCAA);
-        layout.addView(minLbl);
-        layout.addView(minEt);
-
-        TextView targetLbl = new TextView(this);
-        targetLbl.setText("Target SDK:");
-        targetLbl.setTextColor(0xFFDCDCAA);
-        layout.addView(targetLbl);
-        layout.addView(targetEt);
-
-        TextView hint = new TextView(this);
-        hint.setText("Common: min 21, target 34 or 35");
-        hint.setTextColor(0xFF858585);
-        hint.setTextSize(11f);
-        layout.addView(hint);
-
         new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Build APK")
+            .setTitle("Build APK?")
             .setMessage("Project: " + projectRoot.getName())
-            .setView(layout)
             .setPositiveButton("Build", new DialogInterface.OnClickListener() {
-                @Override public void onClick(DialogInterface d, int w) {
-                    int min, target;
-                    try { min = Integer.parseInt(minEt.getText().toString().trim()); }
-                    catch (Exception e) { min = 21; }
-                    try { target = Integer.parseInt(targetEt.getText().toString().trim()); }
-                    catch (Exception e) { target = 34; }
-                    if (min < 1) min = 21;
-                    if (target < min) target = min;
-                    doBuild(min, target);
-                }
+                @Override public void onClick(DialogInterface d, int w) { startBuild(); }
             })
             .setNegativeButton("Cancel", null)
             .show();
     }
 
-    private void doBuild(final int minSdk, final int targetSdk) {
+    private void startBuild() {
         final AlertDialog dlg = new AlertDialog.Builder(this,
                                                         android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Building...")
@@ -856,7 +816,7 @@ public class MainActivity extends Activity {
                             }
                         });
 
-                    final ApkBuilder.Result r = builder.build(projectRoot, minSdk, targetSdk);
+                    final ApkBuilder.Result r = builder.build(projectRoot, 21, 34);
 
                     runOnUiThread(new Runnable() {
                             @Override public void run() {
