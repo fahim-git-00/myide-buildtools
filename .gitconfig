@@ -1,0 +1,12 @@
+[safe]
+	directory = /storage/emulated/0/new P/MyIDE
+[credential]
+	helper = store
+[user]
+	name = fahim-git-00
+	email = fahim-git-00@users.noreply.github.com
+[filter "lfs"]
+	clean = git-lfs clean -- %f
+	smudge = git-lfs smudge -- %f
+	process = git-lfs filter-process
+	required = true
