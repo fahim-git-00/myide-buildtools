@@ -9,18 +9,23 @@ import java.util.regex.Pattern;
 
 public class SyntaxHighlighter {
 
-    // ===== Colors (VS Code dark-like) =====
     private static final int C_KEYWORD    = 0xFF569CD6;
     private static final int C_STRING     = 0xFFCE9178;
     private static final int C_COMMENT    = 0xFF6A9955;
     private static final int C_NUMBER     = 0xFFB5CEA8;
     private static final int C_ANNOTATION = 0xFFDCDCAA;
-    private static final int C_TYPE       = 0xFF4EC9B0; // class names / types
+    private static final int C_TYPE       = 0xFF4EC9B0;
     private static final int C_XML_TAG    = 0xFF569CD6;
     private static final int C_XML_ATTR   = 0xFF9CDCFE;
     private static final int C_XML_STR    = 0xFFCE9178;
 
-    // ===== Language: detect from filename =====
+    public static final int LANG_JAVA = 0;
+    public static final int LANG_XML = 1;
+    public static final int LANG_JSON = 2;
+    public static final int LANG_GRADLE = 3;
+    public static final int LANG_MARKDOWN = 4;
+    public static final int LANG_KOTLIN = 5;
+
     public static int detectLang(String path) {
         if (path == null) return LANG_JAVA;
         String p = path.toLowerCase();
@@ -28,16 +33,10 @@ public class SyntaxHighlighter {
         if (p.endsWith(".json"))   return LANG_JSON;
         if (p.endsWith(".gradle")) return LANG_GRADLE;
         if (p.endsWith(".md"))     return LANG_MARKDOWN;
+        if (p.endsWith(".kt") || p.endsWith(".kts")) return LANG_KOTLIN;
         return LANG_JAVA;
     }
 
-    public static final int LANG_JAVA = 0;
-    public static final int LANG_XML = 1;
-    public static final int LANG_JSON = 2;
-    public static final int LANG_GRADLE = 3;
-    public static final int LANG_MARKDOWN = 4;
-
-    // ===== Java keywords =====
     private static final String[] JAVA_KW = {
         "abstract","assert","boolean","break","byte","case","catch","char",
         "class","const","continue","default","do","double","else","enum",
@@ -49,7 +48,6 @@ public class SyntaxHighlighter {
         "true","false","null"
     };
 
-    // ===== Groovy/Gradle extras =====
     private static final String[] GRADLE_KW = {
         "apply","plugin","android","dependencies","repositories",
         "buildscript","allprojects","task","def","ext","implementation",
@@ -59,13 +57,27 @@ public class SyntaxHighlighter {
         "google","jcenter"
     };
 
-    // ===== Patterns (compiled once) =====
+    private static final String[] KOTLIN_KW = {
+        // hard keywords
+        "as","break","class","continue","do","else","false","for","fun","if",
+        "in","interface","is","null","object","package","return","super","this",
+        "throw","true","try","typealias","typeof","val","var","when","while",
+        // soft keywords
+        "by","catch","constructor","delegate","dynamic","field","file","finally",
+        "get","import","init","param","property","receiver","set","setparam",
+        "where","actual","abstract","annotation","companion","const","crossinline",
+        "data","enum","expect","external","final","infix","inline","inner",
+        "internal","lateinit","noinline","open","operator","out","override",
+        "private","protected","public","reified","sealed","suspend","tailrec",
+        "vararg","it"
+    };
+
     private static final Pattern P_JAVA_COMMENT =
         Pattern.compile("//[^\\n]*|/\\*[\\s\\S]*?\\*/");
     private static final Pattern P_JAVA_STRING =
-        Pattern.compile("\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'");
+        Pattern.compile("\"\"\"[\\s\\S]*?\"\"\"|\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'");
     private static final Pattern P_JAVA_NUMBER =
-        Pattern.compile("\\b\\d+(\\.\\d+)?[fFdDlL]?\\b");
+        Pattern.compile("\\b\\d+(\\.\\d+)?[fFdDlL]?\\b|\\b0[xX][0-9a-fA-F]+\\b");
     private static final Pattern P_JAVA_ANNOT =
         Pattern.compile("@\\w+");
     private static final Pattern P_JAVA_TYPE =
@@ -102,25 +114,24 @@ public class SyntaxHighlighter {
 
     private static final Pattern P_JAVA_KW_RE;
     private static final Pattern P_GRADLE_KW_RE;
-    static {
-        StringBuilder sb = new StringBuilder("\\b(?:");
-        for (int i = 0; i < JAVA_KW.length; i++) {
-            if (i > 0) sb.append('|');
-            sb.append(JAVA_KW[i]);
-        }
-        sb.append(")\\b");
-        P_JAVA_KW_RE = Pattern.compile(sb.toString());
+    private static final Pattern P_KOTLIN_KW_RE;
 
-        StringBuilder sb2 = new StringBuilder("\\b(?:");
-        for (int i = 0; i < GRADLE_KW.length; i++) {
-            if (i > 0) sb2.append('|');
-            sb2.append(GRADLE_KW[i]);
-        }
-        sb2.append(")\\b");
-        P_GRADLE_KW_RE = Pattern.compile(sb2.toString());
+    static {
+        P_JAVA_KW_RE = buildKwPattern(JAVA_KW);
+        P_GRADLE_KW_RE = buildKwPattern(GRADLE_KW);
+        P_KOTLIN_KW_RE = buildKwPattern(KOTLIN_KW);
     }
 
-    // ===== Public entry =====
+    private static Pattern buildKwPattern(String[] kws) {
+        StringBuilder sb = new StringBuilder("\\b(?:");
+        for (int i = 0; i < kws.length; i++) {
+            if (i > 0) sb.append('|');
+            sb.append(kws[i]);
+        }
+        sb.append(")\\b");
+        return Pattern.compile(sb.toString());
+    }
+
     public static void highlight(Spannable text) {
         highlight(text, LANG_JAVA);
     }
@@ -134,33 +145,39 @@ public class SyntaxHighlighter {
             case LANG_JSON:     highlightJson(text, s); break;
             case LANG_GRADLE:   highlightGradle(text, s); break;
             case LANG_MARKDOWN: highlightMarkdown(text, s); break;
+            case LANG_KOTLIN:   highlightKotlin(text, s); break;
             default:            highlightJava(text, s); break;
         }
     }
 
-    // ===== Clear =====
     private static void clearSpans(Spannable text) {
         ForegroundColorSpan[] old = text.getSpans(
             0, text.length(), ForegroundColorSpan.class);
         for (ForegroundColorSpan sp : old) text.removeSpan(sp);
     }
 
-    // ===== Java =====
     private static void highlightJava(Spannable t, String s) {
-        // comments & strings first (they take priority)
         apply(t, s, P_JAVA_COMMENT, C_COMMENT);
         apply(t, s, P_JAVA_STRING, C_STRING);
-        // avoid re-coloring inside them? simple approach: apply others, then reapply comments/strings
         apply(t, s, P_JAVA_ANNOT, C_ANNOTATION);
         apply(t, s, P_JAVA_NUMBER, C_NUMBER);
         apply(t, s, P_JAVA_TYPE, C_TYPE);
         apply(t, s, P_JAVA_KW_RE, C_KEYWORD);
-        // re-apply comments & strings to win over
         apply(t, s, P_JAVA_COMMENT, C_COMMENT);
         apply(t, s, P_JAVA_STRING, C_STRING);
     }
 
-    // ===== XML =====
+    private static void highlightKotlin(Spannable t, String s) {
+        apply(t, s, P_JAVA_COMMENT, C_COMMENT);
+        apply(t, s, P_JAVA_STRING, C_STRING);
+        apply(t, s, P_JAVA_ANNOT, C_ANNOTATION);
+        apply(t, s, P_JAVA_NUMBER, C_NUMBER);
+        apply(t, s, P_JAVA_TYPE, C_TYPE);
+        apply(t, s, P_KOTLIN_KW_RE, C_KEYWORD);
+        apply(t, s, P_JAVA_COMMENT, C_COMMENT);
+        apply(t, s, P_JAVA_STRING, C_STRING);
+    }
+
     private static void highlightXml(Spannable t, String s) {
         apply(t, s, P_XML_COMMENT, C_COMMENT);
         apply(t, s, P_XML_DECL, C_KEYWORD);
@@ -171,7 +188,6 @@ public class SyntaxHighlighter {
         apply(t, s, P_XML_COMMENT, C_COMMENT);
     }
 
-    // ===== JSON =====
     private static void highlightJson(Spannable t, String s) {
         apply(t, s, P_JSON_STRING, C_STRING);
         apply(t, s, P_JSON_NUMBER, C_NUMBER);
@@ -179,7 +195,6 @@ public class SyntaxHighlighter {
         apply(t, s, P_JSON_STRING, C_STRING);
     }
 
-    // ===== Gradle/Groovy =====
     private static void highlightGradle(Spannable t, String s) {
         apply(t, s, P_JAVA_COMMENT, C_COMMENT);
         apply(t, s, P_JAVA_STRING, C_STRING);
@@ -189,7 +204,6 @@ public class SyntaxHighlighter {
         apply(t, s, P_JAVA_STRING, C_STRING);
     }
 
-    // ===== Markdown =====
     private static void highlightMarkdown(Spannable t, String s) {
         apply(t, s, P_MD_HEADER, C_KEYWORD);
         apply(t, s, P_MD_CODE, C_STRING);
@@ -197,7 +211,6 @@ public class SyntaxHighlighter {
         apply(t, s, P_MD_LINK, C_TYPE);
     }
 
-    // ===== Core apply =====
     private static void apply(Spannable text, String source, Pattern p, int color) {
         Matcher m = p.matcher(source);
         while (m.find()) {

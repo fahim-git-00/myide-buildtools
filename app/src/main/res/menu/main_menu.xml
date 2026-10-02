@@ -50,6 +50,11 @@
         android:showAsAction="never" />
 
     <item
+        android:id="@+id/action_kotlin_mode"
+        android:title="Kotlin Mode"
+        android:showAsAction="never" />
+
+    <item
         android:id="@+id/action_logcat"
         android:title="Logcat"
         android:showAsAction="never" />

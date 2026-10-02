@@ -142,10 +142,6 @@ public class MainActivity extends Activity {
         updateTitle();
     }
 
-    // =========================================================
-    //  Theme
-    // =========================================================
-
     private void applyTheme() {
         SharedPreferences prefs = getSharedPreferences("theme", MODE_PRIVATE);
         int mode = prefs.getInt("mode", 2);
@@ -164,10 +160,6 @@ public class MainActivity extends Activity {
         toast(msg);
         recreate();
     }
-
-    // =========================================================
-    //  tabs + undo setup
-    // =========================================================
 
     private void setupTabs() {
         HorizontalScrollView strip = (HorizontalScrollView) findViewById(R.id.tabStrip);
@@ -256,10 +248,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    // =========================================================
-    //  file operations
-    // =========================================================
-
     private void showFileOps(final File f) {
         final String[] items = f.isDirectory()
             ? new String[]{"New file", "New folder", "Rename", "Duplicate", "Delete"}
@@ -307,10 +295,6 @@ public class MainActivity extends Activity {
             .show();
     }
 
-    // =========================================================
-    //  Libraries (Maven)
-    // =========================================================
-
     private void showLibraries() {
         if (projectRoot == null) {
             toast("Pick or create a project first");
@@ -322,10 +306,6 @@ public class MainActivity extends Activity {
                 }
             }).show();
     }
-
-    // =========================================================
-    //  Logcat
-    // =========================================================
 
     private void showLogcat() {
         final LogcatView logcat = new LogcatView(this);
@@ -343,8 +323,62 @@ public class MainActivity extends Activity {
     }
 
     // =========================================================
-    //  Menu
+    //  Kotlin mode
     // =========================================================
+
+    private void showKotlinMode() {
+        final SharedPreferences prefs = getSharedPreferences("kotlin", MODE_PRIVATE);
+        final String current = prefs.getString("mode", "auto");
+
+        final String[] labels = {
+            "Auto (local if available, else remote)",
+            "Local only (on-device kotlinc)",
+            "Remote only (GitHub Actions)"
+        };
+        final String[] values = { "auto", "local", "remote" };
+
+        int checked = 0;
+        for (int i = 0; i < values.length; i++) if (values[i].equals(current)) checked = i;
+
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Kotlin Compile Mode")
+            .setSingleChoiceItems(labels, checked, new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int which) {
+                    prefs.edit().putString("mode", values[which]).apply();
+                    toast("Kotlin mode: " + values[which]);
+                    d.dismiss();
+                }
+            })
+            .setNeutralButton("GitHub Token", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int w) {
+                    showGithubTokenDialog();
+                }
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    private void showGithubTokenDialog() {
+        final RemoteKotlinCompiler rkc = new RemoteKotlinCompiler(this, null);
+        final EditText et = new EditText(this);
+        et.setHint("ghp_xxxxxxxxxxxx");
+        et.setSingleLine(true);
+        String existing = getSharedPreferences("github", MODE_PRIVATE).getString("token", "");
+        if (existing != null && existing.length() > 0) et.setText(existing);
+
+        new AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("GitHub Token")
+            .setMessage("Needs 'repo' + 'workflow' scope. Used only for remote Kotlin builds.")
+            .setView(et)
+            .setPositiveButton("Save", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int w) {
+                    rkc.setToken(et.getText().toString());
+                    toast("Token saved");
+                }
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
@@ -373,12 +407,9 @@ public class MainActivity extends Activity {
         else if (id == R.id.action_libraries)     { showLibraries(); return true; }
         else if (id == R.id.action_logcat)        { showLogcat(); return true; }
         else if (id == R.id.action_theme)         { toggleTheme(); return true; }
+        else if (id == R.id.action_kotlin_mode)   { showKotlinMode(); return true; }
         return super.onOptionsItemSelected(item);
     }
-
-    // =========================================================
-    //  Sidebar
-    // =========================================================
 
     private void openSidebar() {
         if (sidebarOpen && sidebar.getVisibility() == View.VISIBLE) return;
@@ -453,10 +484,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    // =========================================================
-    //  Storage permission
-    // =========================================================
-
     private void requestStoragePermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= 30) {
             if (!Environment.isExternalStorageManager()) {
@@ -482,10 +509,6 @@ public class MainActivity extends Activity {
             }
         }
     }
-
-    // =========================================================
-    //  Folder picking
-    // =========================================================
 
     private void pickProjectFolder() {
         File startTmp = Environment.getExternalStorageDirectory();
@@ -613,10 +636,6 @@ public class MainActivity extends Activity {
         }
         return null;
     }
-
-    // =========================================================
-    //  New project
-    // =========================================================
 
     private void showNewProjectDialog() {
         LinearLayout root = new LinearLayout(this);
@@ -811,10 +830,6 @@ public class MainActivity extends Activity {
             .replace(">", "&gt;").replace("\"", "&quot;");
     }
 
-    // =========================================================
-    //  Build
-    // =========================================================
-
     private void runBuild() {
         if (projectRoot == null) {
             toast("Pick or create a project first");
@@ -919,10 +934,6 @@ public class MainActivity extends Activity {
             }).start();
     }
 
-    // =========================================================
-    //  Save APK
-    // =========================================================
-
     private void askWhereToSave(final File apk) {
         File startTmp = Environment.getExternalStorageDirectory();
         if (!startTmp.exists() || !startTmp.canRead()) startTmp = getFilesDir();
@@ -1019,10 +1030,6 @@ public class MainActivity extends Activity {
         return new String(out.toByteArray(), "UTF-8");
     }
 
-    // =========================================================
-    //  Save / load
-    // =========================================================
-
     private void saveFile() {
         if (currentFile == null) { saveFileAs(); return; }
         try {
@@ -1053,7 +1060,7 @@ public class MainActivity extends Activity {
                 @Override public void onClick(DialogInterface d, int w) {
                     String name = et.getText().toString().trim();
                     if (name.length() == 0) return;
-                    if (!name.endsWith(".java")) name += ".java";
+                    if (!name.endsWith(".java") && !name.endsWith(".kt")) name += ".java";
                     File dir = new File(projectRoot, "src");
                     if (!dir.exists()) dir.mkdirs();
                     File f = new File(dir, name);
@@ -1066,10 +1073,6 @@ public class MainActivity extends Activity {
             .setNegativeButton("Cancel", null)
             .show();
     }
-
-    // =========================================================
-    //  Misc
-    // =========================================================
 
     private void updateLineNumbers(String text) {
         int lines = 1;

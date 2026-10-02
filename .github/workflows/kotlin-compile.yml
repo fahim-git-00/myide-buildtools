@@ -1,0 +1,138 @@
+name: Kotlin Compile
+
+on:
+  workflow_dispatch:
+    inputs:
+      chunk_count:
+        description: 'Number of payload chunks'
+        required: true
+        default: '1'
+      chunk_0:
+        description: 'Chunk 0 (path\u0000base64\u0001path\u0000base64...)'
+        required: false
+        default: ''
+      chunk_1:
+        description: 'Chunk 1'
+        required: false
+        default: ''
+      chunk_2:
+        description: 'Chunk 2'
+        required: false
+        default: ''
+      chunk_3:
+        description: 'Chunk 3'
+        required: false
+        default: ''
+      chunk_4:
+        description: 'Chunk 4'
+        required: false
+        default: ''
+      chunk_5:
+        description: 'Chunk 5'
+        required: false
+        default: ''
+      chunk_6:
+        description: 'Chunk 6'
+        required: false
+        default: ''
+      chunk_7:
+        description: 'Chunk 7'
+        required: false
+        default: ''
+      chunk_8:
+        description: 'Chunk 8'
+        required: false
+        default: ''
+      chunk_9:
+        description: 'Chunk 9'
+        required: false
+        default: ''
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK
+        run: |
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          cd $HOME/android-sdk/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q commandlinetools-linux-11076708_latest.zip
+          mv cmdline-tools latest
+          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
+          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" > /dev/null
+          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
+
+      - name: Download Kotlin compiler
+        run: |
+          mkdir -p tools
+          wget -q -O tools/kotlin-compiler.zip https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip
+          cd tools && unzip -q kotlin-compiler.zip && rm kotlin-compiler.zip
+          chmod +x kotlinc/bin/kotlinc
+          echo "KOTLINC=$PWD/kotlinc/bin/kotlinc" >> $GITHUB_ENV
+
+      - name: Decode sources
+        env:
+          CHUNK_COUNT: ${{ inputs.chunk_count }}
+          CHUNK_0: ${{ inputs.chunk_0 }}
+          CHUNK_1: ${{ inputs.chunk_1 }}
+          CHUNK_2: ${{ inputs.chunk_2 }}
+          CHUNK_3: ${{ inputs.chunk_3 }}
+          CHUNK_4: ${{ inputs.chunk_4 }}
+          CHUNK_5: ${{ inputs.chunk_5 }}
+          CHUNK_6: ${{ inputs.chunk_6 }}
+          CHUNK_7: ${{ inputs.chunk_7 }}
+          CHUNK_8: ${{ inputs.chunk_8 }}
+          CHUNK_9: ${{ inputs.chunk_9 }}
+        run: |
+          python3 - <<'PY'
+          import os, base64, pathlib
+
+          payload = ""
+          for i in range(int(os.environ.get("CHUNK_COUNT", "1"))):
+              payload += os.environ.get(f"CHUNK_{i}", "")
+
+          if not payload:
+              print("Empty payload")
+              raise SystemExit(1)
+
+          out_root = pathlib.Path("ktsrc")
+          out_root.mkdir(exist_ok=True)
+
+          for item in payload.split("\u0001"):
+              if not item:
+                  continue
+              name, b64 = item.split("\u0000", 1)
+              data = base64.b64decode(b64)
+              (out_root / name).write_bytes(data)
+              print("wrote", name, len(data), "bytes")
+          PY
+
+      - name: Compile Kotlin
+        run: |
+          mkdir -p kotlin-classes
+          $KOTLINC \
+            -no-stdlib -no-reflect \
+            -jvm-target 1.8 \
+            -classpath "$ANDROID_HOME/platforms/android-35/android.jar" \
+            -d kotlin-classes \
+            ktsrc/*.kt 2>&1 | tee kotlinc.log
+          if [ ! -d kotlin-classes ] || [ -z "$(ls -A kotlin-classes)" ]; then
+            echo "No classes produced"
+            cat kotlinc.log
+            exit 1
+          fi
+
+      - name: Upload classes
+        uses: actions/upload-artifact@v4
+        with:
+          name: kotlin-classes
+          path: kotlin-classes/
+          if-no-files-found: error

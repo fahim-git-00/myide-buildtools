@@ -217,9 +217,63 @@ public class ApkBuilder {
             }
             runAapt2(linkArgs.toArray(new String[0]));
 
-            say("Compiling Java (ECJ)...");
             File classesDir = new File(workDir, "classes");
             classesDir.mkdirs();
+
+            // ---- KOTLIN (optional, before Java) ----
+            boolean hasKotlin = false;
+            for (File src : sourceRoots) if (hasKtFiles(src)) { hasKotlin = true; break; }
+
+            if (hasKotlin) {
+                String mode = ctx.getSharedPreferences("kotlin", Context.MODE_PRIVATE)
+                                 .getString("mode", "auto");
+
+                File kotlincJar = null, ktStdlib = null;
+                try { kotlincJar = extractAsset("kotlin-compiler-embeddable-1.9.24.jar"); }
+                catch (Exception ignored) {}
+                try { ktStdlib = extractAsset("kotlin-stdlib-1.9.24.jar"); }
+                catch (Exception ignored) {}
+
+                boolean compiled = false;
+
+                // -------- REMOTE --------
+                if ("remote".equals(mode) || ("auto".equals(mode) && kotlincJar == null)) {
+                    say("Kotlin: using remote compiler (GitHub Actions)...");
+                    try {
+                        RemoteKotlinCompiler rkc = new RemoteKotlinCompiler(ctx,
+                            new RemoteKotlinCompiler.Progress() {
+                                @Override public void onProgress(String m) { say(m); }
+                            });
+                        rkc.compile(sourceRoots, classesDir);
+                        if (ktStdlib != null && ktStdlib.exists()) jarDeps.add(ktStdlib);
+                        compiled = true;
+                    } catch (Throwable t) {
+                        say("Remote Kotlin failed: " + causeChain(t));
+                        if ("remote".equals(mode)) {
+                            throw new RuntimeException("Remote Kotlin failed", t);
+                        }
+                    }
+                }
+
+                // -------- LOCAL --------
+                if (!compiled && ("local".equals(mode) || "auto".equals(mode))) {
+                    if (kotlincJar == null) {
+                        throw new RuntimeException(
+                            "Kotlin sources found but kotlin-compiler-embeddable-1.9.24.jar " +
+                            "not in assets/ and remote mode did not succeed.");
+                    }
+                    say("Kotlin: using local compiler...");
+                    KotlinCompiler kc = new KotlinCompiler(ctx, new KotlinCompiler.Progress() {
+                        @Override public void onProgress(String m) { say(m); }
+                    });
+                    kc.compile(kotlincJar, ktStdlib, androidJar, sourceRoots,
+                               genDir, classesDir, jarDeps);
+                    if (ktStdlib != null && ktStdlib.exists()) jarDeps.add(ktStdlib);
+                }
+            }
+
+            // ---- JAVA (ECJ) ----
+            say("Compiling Java (ECJ)...");
             compileJava(androidJar, ecjFull, ecjResDir, sourceRoots, genDir, classesDir, jarDeps);
 
             say("Dexing (D8)...");
@@ -242,6 +296,17 @@ public class ApkBuilder {
             log.append("ERROR: ").append(causeChain(t)).append('\n');
             return new Result(false, null, log.toString());
         }
+    }
+
+    private boolean hasKtFiles(File dir) {
+        if (dir == null || !dir.exists()) return false;
+        File[] kids = dir.listFiles();
+        if (kids == null) return false;
+        for (File f : kids) {
+            if (f.isDirectory()) { if (hasKtFiles(f)) return true; }
+            else if (f.getName().endsWith(".kt")) return true;
+        }
+        return false;
     }
 
     private boolean autoResolveDeps(File depsFile) {
@@ -333,6 +398,15 @@ public class ApkBuilder {
     private void compileJava(File androidJar, File ecjFull, File ecjResDir,
                              List<File> sourceRoots, File genDir, File classesDir,
                              List<File> extraJars) throws Exception {
+        List<File> javaFiles = new ArrayList<File>();
+        for (File src : sourceRoots) findJavaFiles(src, javaFiles);
+        findJavaFiles(genDir, javaFiles);
+
+        if (javaFiles.isEmpty()) {
+            say("No .java files to compile");
+            return;
+        }
+
         ResourceAwareLoader loader = new ResourceAwareLoader(
             ecjFull.getAbsolutePath(),
             ctx.getCacheDir(),
@@ -356,10 +430,6 @@ public class ApkBuilder {
         args.add("-d");
         args.add(classesDir.getAbsolutePath());
 
-        List<File> javaFiles = new ArrayList<File>();
-        for (File src : sourceRoots) findJavaFiles(src, javaFiles);
-        findJavaFiles(genDir, javaFiles);
-        if (javaFiles.isEmpty()) throw new RuntimeException("No .java files found");
         for (File f : javaFiles) args.add(f.getAbsolutePath());
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
