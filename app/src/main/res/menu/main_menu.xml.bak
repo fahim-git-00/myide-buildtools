@@ -2,6 +2,7 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <!-- ===== FILE ===== -->
     <group android:id="@+id/group_file">
         <item
             android:id="@+id/action_new_project"
@@ -20,6 +21,7 @@
             app:showAsAction="never" />
     </group>
 
+    <!-- ===== EDIT ===== -->
     <group android:id="@+id/group_edit">
         <item
             android:id="@+id/action_undo"
@@ -38,6 +40,7 @@
             app:showAsAction="never" />
     </group>
 
+    <!-- ===== SAVE ===== -->
     <group android:id="@+id/group_save">
         <item
             android:id="@+id/action_save"
@@ -51,6 +54,7 @@
             app:showAsAction="never" />
     </group>
 
+    <!-- ===== BUILD ===== -->
     <group android:id="@+id/group_build">
         <item
             android:id="@+id/action_build"
@@ -69,6 +73,7 @@
             app:showAsAction="never" />
     </group>
 
+    <!-- ===== TOOLS ===== -->
     <group android:id="@+id/group_tools">
         <item
             android:id="@+id/action_logcat"
