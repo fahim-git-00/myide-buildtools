@@ -903,7 +903,7 @@ public class MainActivity extends Activity {
     }
 
     // =========================================================
-    //  Save APK / AAB
+    //  Save APK
     // =========================================================
 
     private void askWhereToSave(final File apk) {
@@ -929,78 +929,8 @@ public class MainActivity extends Activity {
                     installApk(saved);
                 }
             })
-            .setNeutralButton("Export AAB", new DialogInterface.OnClickListener() {
-                @Override public void onClick(DialogInterface d, int w) {
-                    exportAab(saved);
-                }
-            })
             .setNegativeButton("Close", null)
             .show();
-    }
-
-    private void exportAab(final File signedApk) {
-        final AlertDialog dlg = new AlertDialog.Builder(this,
-                                                        android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Building AAB...")
-            .setMessage("Converting APK to AAB")
-            .setCancelable(false)
-            .create();
-        dlg.show();
-
-        new Thread(new Runnable() {
-                @Override public void run() {
-                    try {
-                        ApkBuilder b = new ApkBuilder(MainActivity.this, null);
-                        final File aab = b.buildAab(signedApk);
-                        runOnUiThread(new Runnable() {
-                                @Override public void run() {
-                                    dlg.dismiss();
-                                    saveAab(aab);
-                                }
-                            });
-                    } catch (final Throwable t) {
-                        runOnUiThread(new Runnable() {
-                                @Override public void run() {
-                                    dlg.dismiss();
-                                    new AlertDialog.Builder(MainActivity.this,
-                                                            android.R.style.Theme_Material_Dialog_Alert)
-                                        .setTitle("\u274C AAB FAILED")
-                                        .setMessage(t.toString())
-                                        .setPositiveButton("OK", null)
-                                        .show();
-                                }
-                            });
-                    }
-                }
-            }).start();
-    }
-
-    private void saveAab(final File aab) {
-        File startTmp = Environment.getExternalStorageDirectory();
-        if (!startTmp.exists() || !startTmp.canRead()) startTmp = getFilesDir();
-        final File start = startTmp;
-        showFolderPicker(start, new FolderCallback() {
-                @Override public void onChosen(File folder) {
-                    try {
-                        File dest = new File(folder, "app.aab");
-                        int n = 1;
-                        while (dest.exists()) {
-                            dest = new File(folder, "app_" + n + ".aab");
-                            n++;
-                        }
-                        FileInputStream in = new FileInputStream(aab);
-                        FileOutputStream out = new FileOutputStream(dest);
-                        byte[] buf = new byte[8192];
-                        int r;
-                        while ((r = in.read(buf)) > 0) out.write(buf, 0, r);
-                        in.close();
-                        out.close();
-                        toast("AAB saved: " + dest.getAbsolutePath());
-                    } catch (Exception e) {
-                        toast("Save failed: " + e.getMessage());
-                    }
-                }
-            });
     }
 
     private File copyApkToFolder(File apk, File folder) {

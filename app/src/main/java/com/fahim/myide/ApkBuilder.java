@@ -207,45 +207,6 @@ public class ApkBuilder {
         }
     }
 
-    // =========================================================
-    //  AAB export — converts a signed APK to an AAB
-    // =========================================================
-    public File buildAab(File signedApk) throws Exception {
-        say("Converting to AAB...");
-
-        File bundletool = extractAsset("bundletool.jar");
-        File workDir = new File(ctx.getFilesDir(), "aab_area");
-        deleteRecursive(workDir);
-        workDir.mkdirs();
-
-        File aab = new File(workDir, "app.aab");
-
-        DexClassLoader loader = new DexClassLoader(
-            bundletool.getAbsolutePath(),
-            ctx.getCacheDir().getAbsolutePath(),
-            null,
-            ctx.getClassLoader());
-
-        Class<?> tool = loader.loadClass("com.android.tools.build.bundletool.BundleToolMain");
-        Method main = tool.getMethod("main", String[].class);
-
-        List<String> args = new ArrayList<String>();
-        args.add("build-bundle");
-        args.add("--modules=" + signedApk.getAbsolutePath());
-        args.add("--output=" + aab.getAbsolutePath());
-
-        try {
-            main.invoke(null, (Object) args.toArray(new String[0]));
-        } catch (InvocationTargetException ite) {
-            throw new RuntimeException("bundletool error: " + causeChain(ite));
-        }
-
-        if (!aab.exists() || aab.length() == 0) {
-            throw new RuntimeException("AAB not produced");
-        }
-        return aab;
-    }
-
     // ---------- helpers ----------
 
     private Result fail(StringBuilder log, String msg) {
