@@ -1,11 +1,10 @@
-// Top-level build file
-buildscript {
+kbuildscript {
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.1.4'
+        classpath 'com.android.tools.build:gradle:8.7.2'
     }
 }
 

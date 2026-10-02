@@ -2,13 +2,12 @@ apply plugin: 'com.android.application'
 
 android {
     namespace 'com.fahim.myide'
-    compileSdkVersion 34
-    buildToolsVersion "34.0.0"
+    compileSdk 35
 
     defaultConfig {
         applicationId "com.fahim.myide"
-        minSdkVersion 24
-        targetSdkVersion 33
+        minSdk 24
+        targetSdk 35
         versionCode 1
         versionName "1.0"
     }
@@ -21,8 +20,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     packagingOptions {
