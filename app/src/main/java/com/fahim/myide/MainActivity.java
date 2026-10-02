@@ -12,6 +12,7 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -45,6 +46,7 @@ public class MainActivity extends Activity {
 
     private TabManager tabs;
     private UndoManager undoMgr;
+    private EditorEnhancer enhancer;
 
     private View sidebar;
     private View dimLayer;
@@ -81,6 +83,7 @@ public class MainActivity extends Activity {
 
         setupTabs();
         setupUndo();
+        enhancer = new EditorEnhancer(editor);
 
         btnOpenFolder.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) { pickProjectFolder(); }
@@ -135,6 +138,23 @@ public class MainActivity extends Activity {
                     SyntaxHighlighter.highlight(s, currentLang());
                     updateLineNumbers(s.toString());
                     isHighlighting = false;
+                }
+            });
+
+        editor.setOnKeyListener(new View.OnKeyListener() {
+                @Override public boolean onKey(View v, int keyCode, KeyEvent event) {
+                    if (event.getAction() != KeyEvent.ACTION_DOWN) return false;
+                    if (event.isCtrlPressed()) {
+                        if (keyCode == KeyEvent.KEYCODE_S) { saveFile(); return true; }
+                        if (keyCode == KeyEvent.KEYCODE_F) {
+                            new FindReplaceDialog(MainActivity.this, editor).show();
+                            return true;
+                        }
+                        if (keyCode == KeyEvent.KEYCODE_Z) { flushActiveTab(); undoMgr.undo(); return true; }
+                        if (keyCode == KeyEvent.KEYCODE_Y) { flushActiveTab(); undoMgr.redo(); return true; }
+                        if (keyCode == KeyEvent.KEYCODE_B) { runBuild(); return true; }
+                    }
+                    return false;
                 }
             });
 
@@ -321,10 +341,6 @@ public class MainActivity extends Activity {
         logcat.start();
         dlg.show();
     }
-
-    // =========================================================
-    //  Kotlin mode
-    // =========================================================
 
     private void showKotlinMode() {
         final SharedPreferences prefs = getSharedPreferences("kotlin", MODE_PRIVATE);
