@@ -113,25 +113,15 @@ public class ApkBuilder {
             if (depsFile.exists()) {
                 File mavenDir = new File(workDir, "maven_libs");
                 mavenDir.mkdirs();
-
                 int n = 0;
-                try {
-                    n = MavenResolver.copyResolvedToDir(ctx, depsFile, mavenDir);
-                } catch (Exception e) {
-                    say("Maven copy failed: " + e.getMessage());
-                }
-
+                try { n = MavenResolver.copyResolvedToDir(ctx, depsFile, mavenDir); }
+                catch (Exception e) { say("Maven copy failed: " + e.getMessage()); }
                 if (n == 0) {
-                    say("Cache empty — downloading dependencies...");
                     if (autoResolveDeps(depsFile)) {
-                        try {
-                            n = MavenResolver.copyResolvedToDir(ctx, depsFile, mavenDir);
-                        } catch (Exception e) {
-                            say("Maven copy failed after resolve: " + e.getMessage());
-                        }
+                        try { n = MavenResolver.copyResolvedToDir(ctx, depsFile, mavenDir); }
+                        catch (Exception e) { say("Maven copy failed: " + e.getMessage()); }
                     }
                 }
-
                 if (n > 0) collectDeps(mavenDir, jarDeps, aarDeps);
             }
 
@@ -147,10 +137,8 @@ public class ApkBuilder {
                 }
             }
 
-            say("Loading bundled AndroidX/Material AARs...");
-            List<File> bundledAars = extractBundledAars(workDir);
-            say("Loaded " + bundledAars.size() + " bundled AARs");
-            aarDeps.addAll(bundledAars);
+            say("Loading bundled AARs...");
+            aarDeps.addAll(extractBundledAars());
 
             say("Extracting tools...");
             File androidJar  = extractAsset("android.jar");
@@ -166,25 +154,37 @@ public class ApkBuilder {
             ecjResDir.mkdirs();
             unzipTo(ecjResZip, ecjResDir);
 
-            say("Merging resources...");
-            File mergedRes = new File(workDir, "res_merged");
-            mergedRes.mkdirs();
+            // ---------- 1) Compile app res ----------
+            say("Compiling app resources...");
+            File appResFlat = new File(workDir, "app_res_flat");
+            appResFlat.mkdirs();
             for (File r : resRoots) {
-                if (r.exists()) copyResDir(r, mergedRes);
+                if (!r.exists()) continue;
+                File flatOut = new File(appResFlat, r.getName() + "_" + Math.abs(r.hashCode()));
+                flatOut.mkdirs();
+                runAapt2("compile", "--dir", r.getAbsolutePath(), "-o", flatOut.getAbsolutePath());
             }
 
+            // ---------- 2) Build AAR static libs ----------
+            say("Building AAR libraries...");
             File aarClassesDir = new File(workDir, "aar_classes");
             aarClassesDir.mkdirs();
 
+            List<File> aarStaticLibs = new ArrayList<File>();
+
+            // Prepare R.java dir for aar packages
+            File aarRDir = new File(workDir, "aar_gen");
+            aarRDir.mkdirs();
+
+            int aarIdx = 0;
             for (File aar : aarDeps) {
-                say("Extracting AAR: " + aar.getName());
+                aarIdx++;
+                say("Processing AAR " + aarIdx + "/" + aarDeps.size() + ": " + aar.getName());
                 File extractDir = new File(workDir, "aar_extract/" + aar.getName().replace(".", "_"));
                 extractDir.mkdirs();
                 unzipTo(aar, extractDir);
 
-                File aarRes = new File(extractDir, "res");
-                if (aarRes.exists()) copyResDir(aarRes, mergedRes);
-
+                // classes.jar
                 File aarClasses = new File(extractDir, "classes.jar");
                 if (aarClasses.exists()) {
                     File dest = new File(aarClassesDir, aar.getName().replace(".aar", "_classes.jar"));
@@ -192,36 +192,75 @@ public class ApkBuilder {
                     jarDeps.add(dest);
                 }
 
-                // Also handle jar-based AARs (like lifecycle-common) that ship libs/*.jar
+                // libs/*.jar
                 File aarLibs = new File(extractDir, "libs");
                 if (aarLibs.exists()) {
                     File[] libJars = aarLibs.listFiles();
-                    if (libJars != null) {
-                        for (File lj : libJars) {
-                            if (lj.isFile() && lj.getName().endsWith(".jar")) {
-                                File dest = new File(aarClassesDir,
-                                    aar.getName().replace(".aar", "_" + lj.getName()));
-                                copyFile(lj, dest);
-                                jarDeps.add(dest);
-                            }
+                    if (libJars != null) for (File lj : libJars) {
+                        if (lj.isFile() && lj.getName().endsWith(".jar")) {
+                            File dest = new File(aarClassesDir, aar.getName().replace(".aar", "_") + lj.getName());
+                            copyFile(lj, dest);
+                            jarDeps.add(dest);
                         }
                     }
                 }
+
+                File aarRes = new File(extractDir, "res");
+                File aarManifest = new File(extractDir, "AndroidManifest.xml");
+
+                if (!aarRes.exists() || !aarManifest.exists()) continue;
+
+                // Compile res
+                File aarResFlat = new File(workDir, "aar_res_flat/" + aarIdx);
+                aarResFlat.mkdirs();
+                runAapt2("compile", "--dir", aarRes.getAbsolutePath(), "-o", aarResFlat.getAbsolutePath());
+
+                // Extract package name from aar manifest
+                String aarPkg = extractPackage(aarManifest);
+
+                // Generate R.java
+                File aarRJava = new File(aarRDir, "r" + aarIdx);
+                aarRJava.mkdirs();
+
+                // Link aar as static library
+                File staticLib = new File(workDir, "aar_static_lib/" + aarIdx + ".apk");
+                staticLib.getParentFile().mkdirs();
+
+                List<String> staticArgs = new ArrayList<String>();
+                staticArgs.add("link");
+                staticArgs.add("--static-lib");
+                staticArgs.add("-I"); staticArgs.add(androidJar.getAbsolutePath());
+                staticArgs.add("--manifest"); staticArgs.add(aarManifest.getAbsolutePath());
+                staticArgs.add("--java"); staticArgs.add(aarRJava.getAbsolutePath());
+                if (aarPkg != null && aarPkg.length() > 0) {
+                    staticArgs.add("--rename-manifest-package");
+                    staticArgs.add(aarPkg);
+                }
+                staticArgs.add("--min-sdk-version"); staticArgs.add(String.valueOf(minSdk));
+                staticArgs.add("--target-sdk-version"); staticArgs.add(String.valueOf(targetSdk));
+                staticArgs.add("-o"); staticArgs.add(staticLib.getAbsolutePath());
+
+                File[] aarFlat = aarResFlat.listFiles();
+                if (aarFlat != null) for (File f : aarFlat) {
+                    if (f.getName().endsWith(".flat")) staticArgs.add(f.getAbsolutePath());
+                }
+
+                try {
+                    runAapt2(staticArgs.toArray(new String[0]));
+                    aarStaticLibs.add(staticLib);
+
+                    // Add generated R.java to source roots
+                    sourceRoots.add(aarRJava);
+                } catch (Exception e) {
+                    say("AAR " + aar.getName() + " link failed: " + e.getMessage());
+                }
             }
 
-            // Merge generated R.java files? aapt2 handles this for app only.
-            // AndroidX R classes come from their classes.jar (already in jarDeps).
-
+            // ---------- 3) Compile merged app res ----------
             File patchedManifest = new File(workDir, "AndroidManifest.xml");
             patchManifest(appManifest, patchedManifest, minSdk, targetSdk);
 
-            say("Compiling resources (aapt2)...");
-            File compiledRes = new File(workDir, "compiled_res");
-            compiledRes.mkdirs();
-            runAapt2("compile", "--dir", mergedRes.getAbsolutePath(),
-                     "-o", compiledRes.getAbsolutePath());
-
-            say("Linking resources (aapt2)...");
+            say("Linking app resources (aapt2)...");
             File genDir = new File(workDir, "gen");
             genDir.mkdirs();
             File unsignedApk = new File(workDir, "app-unsigned.apk");
@@ -229,6 +268,10 @@ public class ApkBuilder {
             List<String> linkArgs = new ArrayList<String>();
             linkArgs.add("link");
             linkArgs.add("-I"); linkArgs.add(androidJar.getAbsolutePath());
+            for (File sl : aarStaticLibs) {
+                linkArgs.add("-I");
+                linkArgs.add(sl.getAbsolutePath());
+            }
             linkArgs.add("--manifest"); linkArgs.add(patchedManifest.getAbsolutePath());
             linkArgs.add("--java"); linkArgs.add(genDir.getAbsolutePath());
             linkArgs.add("--min-sdk-version"); linkArgs.add(String.valueOf(minSdk));
@@ -236,12 +279,18 @@ public class ApkBuilder {
             linkArgs.add("--auto-add-overlay");
             linkArgs.add("-o"); linkArgs.add(unsignedApk.getAbsolutePath());
 
-            File[] flat = compiledRes.listFiles();
-            if (flat != null) for (File f : flat) {
-                if (f.getName().endsWith(".flat")) linkArgs.add(f.getAbsolutePath());
+            File[] flatDirs = appResFlat.listFiles();
+            if (flatDirs != null) {
+                for (File d : flatDirs) {
+                    File[] inner = d.listFiles();
+                    if (inner != null) for (File f : inner) {
+                        if (f.getName().endsWith(".flat")) linkArgs.add(f.getAbsolutePath());
+                    }
+                }
             }
             runAapt2(linkArgs.toArray(new String[0]));
 
+            // ---------- 4) Compile Java ----------
             File classesDir = new File(workDir, "classes");
             classesDir.mkdirs();
 
@@ -251,7 +300,6 @@ public class ApkBuilder {
             if (hasKotlin) {
                 String mode = ctx.getSharedPreferences("kotlin", Context.MODE_PRIVATE)
                                  .getString("mode", "auto");
-
                 File kotlincJar = null, ktStdlib = null;
                 try { kotlincJar = extractAsset("kotlin-compiler-embeddable-1.9.24.jar"); }
                 catch (Exception ignored) {}
@@ -259,9 +307,8 @@ public class ApkBuilder {
                 catch (Exception ignored) {}
 
                 boolean compiled = false;
-
                 if ("remote".equals(mode) || ("auto".equals(mode) && kotlincJar == null)) {
-                    say("Kotlin: using remote compiler...");
+                    say("Kotlin: remote...");
                     try {
                         RemoteKotlinCompiler rkc = new RemoteKotlinCompiler(ctx,
                             new RemoteKotlinCompiler.Progress() {
@@ -270,13 +317,10 @@ public class ApkBuilder {
                         rkc.compile(sourceRoots, classesDir);
                         if (ktStdlib != null && ktStdlib.exists()) jarDeps.add(ktStdlib);
                         compiled = true;
-                    } catch (Throwable t) {
-                        say("Remote Kotlin failed: " + causeChain(t));
-                    }
+                    } catch (Throwable t) { say("Remote Kotlin failed"); }
                 }
-
                 if (!compiled && kotlincJar != null) {
-                    say("Kotlin: using local compiler...");
+                    say("Kotlin: local...");
                     KotlinCompiler kc = new KotlinCompiler(ctx, new KotlinCompiler.Progress() {
                         @Override public void onProgress(String m) { say(m); }
                     });
@@ -311,74 +355,22 @@ public class ApkBuilder {
         }
     }
 
-    /**
-     * Copy res/ tree. Special handling: for any values-XX/foo.xml in src that
-     * has no base values/foo.xml, also copy to base values/.
-     * Same for layout-XX, drawable-XX, mipmap-XX, etc.
-     * This prevents aapt2 "removing resource without required default value" errors.
-     */
-    private void copyResDir(File srcRoot, File dstRoot) throws Exception {
-        if (srcRoot == null || !srcRoot.exists()) return;
-
-        // First pass: normal copy
-        copyDirContentsRaw(srcRoot, dstRoot);
-
-        // Second pass: fix missing defaults
-        File[] topLevel = srcRoot.listFiles();
-        if (topLevel == null) return;
-
-        for (File folder : topLevel) {
-            if (!folder.isDirectory()) continue;
-            String name = folder.getName();
-            int dash = name.indexOf('-');
-            if (dash <= 0) continue;
-
-            String base = name.substring(0, dash);
-            File dstBase = new File(dstRoot, base);
-
-            File[] files = folder.listFiles();
-            if (files == null) continue;
-
-            for (File f : files) {
-                if (!f.isFile()) continue;
-                File dstFile = new File(dstBase, f.getName());
-                if (dstFile.exists()) continue;
-
-                if (dstBase.exists() || dstBase.mkdirs()) {
-                    copyFile(f, dstFile);
-                }
-            }
-        }
+    private String extractPackage(File manifest) {
+        try {
+            String xml = readFile(manifest);
+            Matcher m = Pattern.compile("package\\s*=\\s*\"([^\"]+)\"").matcher(xml);
+            if (m.find()) return m.group(1);
+        } catch (Exception ignored) {}
+        return null;
     }
 
-    /** Raw copy — no special handling, but does not overwrite. */
-    private void copyDirContentsRaw(File srcDir, File dstDir) throws Exception {
-        if (srcDir == null || !srcDir.exists()) return;
-        File[] kids = srcDir.listFiles();
-        if (kids == null) return;
-        for (File k : kids) {
-            File target = new File(dstDir, k.getName());
-            if (k.isDirectory()) {
-                target.mkdirs();
-                copyDirContentsRaw(k, target);
-            } else {
-                if (target.exists()) continue;
-                File p = target.getParentFile();
-                if (p != null) p.mkdirs();
-                copyFile(k, target);
-            }
-        }
-    }
-
-    private List<File> extractBundledAars(File workDir) {
+    private List<File> extractBundledAars() {
         List<File> out = new ArrayList<File>();
         try {
             String[] names = ctx.getAssets().list("aar");
             if (names == null) return out;
-
             File aarCache = new File(ctx.getFilesDir(), "bundled_aar");
             if (!aarCache.exists()) aarCache.mkdirs();
-
             for (String n : names) {
                 if (!n.endsWith(".aar")) continue;
                 File dest = new File(aarCache, n);
@@ -798,24 +790,6 @@ public class ApkBuilder {
             zin.closeEntry();
         }
         zin.close();
-    }
-
-    private void copyDirContents(File srcDir, File dstDir) throws Exception {
-        if (srcDir == null || !srcDir.exists()) return;
-        File[] kids = srcDir.listFiles();
-        if (kids == null) return;
-        for (File k : kids) {
-            File target = new File(dstDir, k.getName());
-            if (k.isDirectory()) {
-                target.mkdirs();
-                copyDirContents(k, target);
-            } else {
-                if (target.exists()) continue;
-                File p = target.getParentFile();
-                if (p != null) p.mkdirs();
-                copyFile(k, target);
-            }
-        }
     }
 
     private void copyFile(File src, File dst) throws Exception {
