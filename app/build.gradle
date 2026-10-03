@@ -28,17 +28,6 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
-        resources {
-            excludes += ['META-INF/*.kotlin_module']
-        }
-    }
-
-    androidResources {
-        noCompress 'jar', 'zip', 'dex', 'so'
-    }
-
-    aaptOptions {
-        ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
     }
 
     lint {
