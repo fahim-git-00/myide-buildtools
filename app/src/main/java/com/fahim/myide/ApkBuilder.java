@@ -178,6 +178,12 @@ public class ApkBuilder {
 
             int aarIdx = 0;
             for (File aar : aarDeps) {
+                // Plain JAR: just add to classpath, nothing else to do
+                if (aar.getName().endsWith(".jar")) {
+                    jarDeps.add(aar);
+                    continue;
+                }
+
                 aarIdx++;
                 say("Processing AAR " + aarIdx + "/" + aarDeps.size() + ": " + aar.getName());
                 File extractDir = new File(workDir, "aar_extract/" + aar.getName().replace(".", "_"));
@@ -372,7 +378,7 @@ public class ApkBuilder {
             File aarCache = new File(ctx.getFilesDir(), "bundled_aar");
             if (!aarCache.exists()) aarCache.mkdirs();
             for (String n : names) {
-                if (!n.endsWith(".aar")) continue;
+                if (!n.endsWith(".aar") && !n.endsWith(".jar")) continue;
                 File dest = new File(aarCache, n);
                 if (!dest.exists() || dest.length() == 0) {
                     InputStream in = ctx.getAssets().open("aar/" + n);
