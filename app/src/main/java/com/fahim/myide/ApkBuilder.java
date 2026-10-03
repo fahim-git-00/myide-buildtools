@@ -145,6 +145,7 @@ public class ApkBuilder {
 
             say("Extracting tools...");
             File androidJar  = extractAsset("android.jar");
+            File lambdaStubs = extractAsset("core-lambda-stubs.jar");
             File ecjFull     = extractAsset("ecj_full.jar");
             File ecjResZip   = extractAsset("ecj_res.zip");
             File d8Zip       = extractAsset("d8.zip");
@@ -302,6 +303,7 @@ public class ApkBuilder {
                 }
             }
 
+            jarDeps.add(lambdaStubs);
             say("Compiling Java (ECJ)...");
             compileJava(androidJar, ecjFull, ecjResDir, sourceRoots, genDir, classesDir, jarDeps);
 
