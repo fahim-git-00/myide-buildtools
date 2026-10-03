@@ -147,7 +147,6 @@ public class ApkBuilder {
                 }
             }
 
-            // ---- BUNDLED AARs from assets/aar/ ----
             say("Loading bundled AndroidX/Material AARs...");
             List<File> bundledAars = extractBundledAars(workDir);
             say("Loaded " + bundledAars.size() + " bundled AARs");
@@ -171,13 +170,11 @@ public class ApkBuilder {
             File mergedRes = new File(workDir, "res_merged");
             mergedRes.mkdirs();
             for (File r : resRoots) {
-                if (r.exists()) copyDirContents(r, mergedRes);
+                if (r.exists()) copyResDir(r, mergedRes);
             }
 
             File aarClassesDir = new File(workDir, "aar_classes");
             aarClassesDir.mkdirs();
-
-            List<File> aarManifestFragments = new ArrayList<File>();
 
             for (File aar : aarDeps) {
                 say("Extracting AAR: " + aar.getName());
@@ -186,10 +183,7 @@ public class ApkBuilder {
                 unzipTo(aar, extractDir);
 
                 File aarRes = new File(extractDir, "res");
-                if (aarRes.exists()) copyDirContents(aarRes, mergedRes);
-
-                File aarManifest = new File(extractDir, "AndroidManifest.xml");
-                if (aarManifest.exists()) aarManifestFragments.add(aarManifest);
+                if (aarRes.exists()) copyResDir(aarRes, mergedRes);
 
                 File aarClasses = new File(extractDir, "classes.jar");
                 if (aarClasses.exists()) {
@@ -197,7 +191,26 @@ public class ApkBuilder {
                     copyFile(aarClasses, dest);
                     jarDeps.add(dest);
                 }
+
+                // Also handle jar-based AARs (like lifecycle-common) that ship libs/*.jar
+                File aarLibs = new File(extractDir, "libs");
+                if (aarLibs.exists()) {
+                    File[] libJars = aarLibs.listFiles();
+                    if (libJars != null) {
+                        for (File lj : libJars) {
+                            if (lj.isFile() && lj.getName().endsWith(".jar")) {
+                                File dest = new File(aarClassesDir,
+                                    aar.getName().replace(".aar", "_" + lj.getName()));
+                                copyFile(lj, dest);
+                                jarDeps.add(dest);
+                            }
+                        }
+                    }
+                }
             }
+
+            // Merge generated R.java files? aapt2 handles this for app only.
+            // AndroidX R classes come from their classes.jar (already in jarDeps).
 
             File patchedManifest = new File(workDir, "AndroidManifest.xml");
             patchManifest(appManifest, patchedManifest, minSdk, targetSdk);
@@ -220,6 +233,7 @@ public class ApkBuilder {
             linkArgs.add("--java"); linkArgs.add(genDir.getAbsolutePath());
             linkArgs.add("--min-sdk-version"); linkArgs.add(String.valueOf(minSdk));
             linkArgs.add("--target-sdk-version"); linkArgs.add(String.valueOf(targetSdk));
+            linkArgs.add("--auto-add-overlay");
             linkArgs.add("-o"); linkArgs.add(unsignedApk.getAbsolutePath());
 
             File[] flat = compiledRes.listFiles();
@@ -294,6 +308,65 @@ public class ApkBuilder {
         } catch (Throwable t) {
             log.append("ERROR: ").append(causeChain(t)).append('\n');
             return new Result(false, null, log.toString());
+        }
+    }
+
+    /**
+     * Copy res/ tree. Special handling: for any values-XX/foo.xml in src that
+     * has no base values/foo.xml, also copy to base values/.
+     * Same for layout-XX, drawable-XX, mipmap-XX, etc.
+     * This prevents aapt2 "removing resource without required default value" errors.
+     */
+    private void copyResDir(File srcRoot, File dstRoot) throws Exception {
+        if (srcRoot == null || !srcRoot.exists()) return;
+
+        // First pass: normal copy
+        copyDirContentsRaw(srcRoot, dstRoot);
+
+        // Second pass: fix missing defaults
+        File[] topLevel = srcRoot.listFiles();
+        if (topLevel == null) return;
+
+        for (File folder : topLevel) {
+            if (!folder.isDirectory()) continue;
+            String name = folder.getName();
+            int dash = name.indexOf('-');
+            if (dash <= 0) continue;
+
+            String base = name.substring(0, dash);
+            File dstBase = new File(dstRoot, base);
+
+            File[] files = folder.listFiles();
+            if (files == null) continue;
+
+            for (File f : files) {
+                if (!f.isFile()) continue;
+                File dstFile = new File(dstBase, f.getName());
+                if (dstFile.exists()) continue;
+
+                if (dstBase.exists() || dstBase.mkdirs()) {
+                    copyFile(f, dstFile);
+                }
+            }
+        }
+    }
+
+    /** Raw copy — no special handling, but does not overwrite. */
+    private void copyDirContentsRaw(File srcDir, File dstDir) throws Exception {
+        if (srcDir == null || !srcDir.exists()) return;
+        File[] kids = srcDir.listFiles();
+        if (kids == null) return;
+        for (File k : kids) {
+            File target = new File(dstDir, k.getName());
+            if (k.isDirectory()) {
+                target.mkdirs();
+                copyDirContentsRaw(k, target);
+            } else {
+                if (target.exists()) continue;
+                File p = target.getParentFile();
+                if (p != null) p.mkdirs();
+                copyFile(k, target);
+            }
         }
     }
 
