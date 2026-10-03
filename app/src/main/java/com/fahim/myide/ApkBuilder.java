@@ -650,7 +650,6 @@ public class ApkBuilder {
             List<String> args = new ArrayList<String>();
             args.add("--output");   args.add(outputDir.getAbsolutePath());
             args.add("--min-api");  args.add(String.valueOf(minSdk));
-            args.add("--lib");      args.add(androidJar.getAbsolutePath());
             args.add("--no-desugaring");
             args.add("--thread-count");
             args.add(String.valueOf(Runtime.getRuntime().availableProcessors()));
