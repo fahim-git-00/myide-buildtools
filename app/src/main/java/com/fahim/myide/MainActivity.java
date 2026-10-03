@@ -485,7 +485,51 @@ public class MainActivity extends Activity {
         else if (id == R.id.action_logcat)        { showLogcat(); return true; }
         else if (id == R.id.action_theme)         { toggleTheme(); return true; }
         else if (id == R.id.action_kotlin_mode)   { showKotlinMode(); return true; }
+        else if (id == R.id.action_gradle_build)  { runGradleBuild(); return true; }
         return super.onOptionsItemSelected(item);
+    }
+
+    private void runGradleBuild() {
+        if (projectRoot == null) { toast("Pick a project first"); return; }
+        flushActiveTab();
+
+        final AlertDialog dlg = new AlertDialog.Builder(this,
+                                                        android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle("Gradle Build")
+            .setMessage("Starting Gradle...")
+            .setCancelable(false)
+            .create();
+        dlg.show();
+
+        new Thread(new Runnable() {
+                @Override public void run() {
+                    GradleBuilder gb = new GradleBuilder(MainActivity.this,
+                        new GradleBuilder.Progress() {
+                            @Override public void onProgress(final String msg) {
+                                runOnUiThread(new Runnable() {
+                                        @Override public void run() { dlg.setMessage(msg); }
+                                    });
+                            }
+                        });
+                    final GradleBuilder.Result r = gb.build(projectRoot, 21, 34);
+
+                    runOnUiThread(new Runnable() {
+                            @Override public void run() {
+                                dlg.dismiss();
+                                if (r.success) {
+                                    askInstallOrClose(r.apk);
+                                } else {
+                                    new AlertDialog.Builder(MainActivity.this,
+                                                            android.R.style.Theme_Material_Dialog_Alert)
+                                        .setTitle("Gradle Build Failed")
+                                        .setMessage(r.log)
+                                        .setPositiveButton("OK", null)
+                                        .show();
+                                }
+                            }
+                        });
+                }
+            }).start();
     }
 
     private void openSidebar() {
@@ -845,49 +889,29 @@ public class MainActivity extends Activity {
             .show();
     }
 
-    /**
-     * Detects the project root.
-     * Priority:
-     *   1. Picked dir has AndroidManifest.xml AND res/ AND src/ (Gradle-ish flat)
-     *   2. Picked/app/src/main  (Gradle module with main source set)
-     *   3. Picked/src/main
-     *   4. Picked/src
-     *   5. Picked/app (fallback)
-     *   6. Any immediate subdir matching the above
-     */
     private File findProjectRoot(File picked) {
         File direct = matchRoot(picked);
         if (direct != null) return direct;
-
         File gradleMain = new File(picked, "app/src/main");
         if (matchRoot(gradleMain) != null) return gradleMain;
-
         File srcMain = new File(picked, "src/main");
         if (matchRoot(srcMain) != null) return srcMain;
-
         File srcFlat = new File(picked, "src");
         if (matchRoot(srcFlat) != null) return srcFlat;
-
         File appDir = new File(picked, "app");
         if (matchRoot(appDir) != null) return appDir;
-
         File[] kids = picked.listFiles();
         if (kids != null) {
             for (File k : kids) {
                 if (!k.isDirectory()) continue;
-
                 File r = matchRoot(k);
                 if (r != null) return r;
-
                 File k1 = new File(k, "app/src/main");
                 if (matchRoot(k1) != null) return k1;
-
                 File k2 = new File(k, "src/main");
                 if (matchRoot(k2) != null) return k2;
-
                 File k3 = new File(k, "src");
                 if (matchRoot(k3) != null) return k3;
-
                 File k4 = new File(k, "app");
                 if (matchRoot(k4) != null) return k4;
             }
@@ -895,12 +919,6 @@ public class MainActivity extends Activity {
         return null;
     }
 
-    /**
-     * Returns dir if it looks like a real Android project root:
-     *   has AndroidManifest.xml
-     *   has res/
-     *   has src/ OR java/
-     */
     private File matchRoot(File dir) {
         if (dir == null || !dir.isDirectory()) return null;
         File manifest = new File(dir, "AndroidManifest.xml");
