@@ -1,0 +1,40 @@
+name: Convert d8 jar to dex jar
+
+on:
+  workflow_dispatch:
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        run: |
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          cd $HOME/android-sdk/cmdline-tools
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q commandlinetools-linux-11076708_latest.zip
+          mv cmdline-tools latest
+          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
+          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;35.0.0" > /dev/null
+
+      - name: Convert r8.jar to dex
+        run: |
+          BT=$HOME/android-sdk/build-tools/35.0.0
+          cp app/src/main/assets/d8.zip r8.jar
+          mkdir -p dexout
+          $BT/d8 --min-api 24 --output dexout r8.jar
+          cd dexout
+          zip -r ../d8-dex.jar classes*.dex
+          cd ..
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: d8-dex
+          path: d8-dex.jar
