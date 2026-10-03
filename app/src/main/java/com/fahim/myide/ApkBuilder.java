@@ -1,6 +1,7 @@
 package com.fahim.myide;
 
 import android.content.Context;
+import android.os.Environment;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -41,6 +42,7 @@ public class ApkBuilder {
 
     private final Context ctx;
     private final Progress progress;
+    private final StringBuilder fullLog = new StringBuilder();
 
     public ApkBuilder(Context ctx, Progress progress) {
         this.ctx = ctx;
@@ -48,37 +50,296 @@ public class ApkBuilder {
     }
 
     private void say(String s) {
+        fullLog.append(s).append('\n');
         if (progress != null) progress.onProgress(s);
     }
 
     public Result build(File projectRoot, int minSdk, int targetSdk) {
         StringBuilder log = new StringBuilder();
         try {
-            // ===== DEBUG: capture aapt2 link --help =====
-            String aapt2HelpText = "";
-            try {
-                String aapt2Path = ctx.getApplicationInfo().nativeLibraryDir + "/libaapt2.so";
-                ProcessBuilder pbDbg = new ProcessBuilder(aapt2Path, "link", "--help");
-                pbDbg.redirectErrorStream(true);
-                Process pDbg = pbDbg.start();
-                ByteArrayOutputStream bo = new ByteArrayOutputStream();
-                InputStream iDbg = pDbg.getInputStream();
-                byte[] bb = new byte[4096];
-                int nn;
-                while ((nn = iDbg.read(bb)) > 0) bo.write(bb, 0, nn);
-                pDbg.waitFor();
-                aapt2HelpText = bo.toString();
-            } catch (Throwable t) {
-                aapt2HelpText = "ERROR: " + t;
+            say("Preparing...");
+
+            File workDir = new File(ctx.getFilesDir(), "build_area");
+            deleteRecursive(workDir);
+            workDir.mkdirs();
+
+            List<File> sourceRoots = new ArrayList<File>();
+            List<File> resRoots = new ArrayList<File>();
+            List<File> jarDeps = new ArrayList<File>();
+            List<File> aarDeps = new ArrayList<File>();
+
+            File appManifest = findManifest(projectRoot);
+            File appRes      = findRes(projectRoot);
+            File appSrc      = findSrc(projectRoot);
+
+            if (appManifest == null) return fail(log, "AndroidManifest.xml not found in project");
+            if (appRes == null)      return fail(log, "res/ folder not found in project");
+            if (appSrc == null)      return fail(log, "src/ folder not found in project");
+
+            sourceRoots.add(appSrc);
+            resRoots.add(appRes);
+
+            File parent = appManifest.getParentFile();
+            if (parent != null) {
+                File sibSrc = new File(parent, "src");
+                if (!sibSrc.exists()) sibSrc = new File(parent, "java");
+                if (sibSrc.exists() && !sibSrc.equals(appSrc)) sourceRoots.add(sibSrc);
+
+                File sibRes = new File(parent, "res");
+                if (sibRes.exists() && !sibRes.equals(appRes)) resRoots.add(sibRes);
             }
-            // Short-circuit: return help text so it shows in the dialog
-            return new Result(false, null, "AAPT2 HELP OUTPUT:\n\n" + aapt2HelpText);
-            // ===== END DEBUG =====
+
+            File settingsGradle = new File(projectRoot, "settings.gradle");
+            if (settingsGradle.exists()) {
+                String settings = readFile(settingsGradle);
+                Matcher m = Pattern.compile("include\\s+([^\\n]+)").matcher(settings);
+                while (m.find()) {
+                    String line = m.group(1);
+                    Matcher nm = Pattern.compile("['\"]([^'\"]+)['\"]").matcher(line);
+                    while (nm.find()) {
+                        String modName = nm.group(1).replace(':', '/');
+                        File modDir = new File(projectRoot, modName);
+                        if (!modDir.exists()) continue;
+
+                        File modRes = findRes(modDir);
+                        File modSrc = findSrc(modDir);
+
+                        if (modSrc != null) sourceRoots.add(modSrc);
+                        if (modRes != null) resRoots.add(modRes);
+
+                        collectDeps(new File(modDir, "libs"), jarDeps, aarDeps);
+                    }
+                }
+            }
+
+            File depsFile = new File(projectRoot, ".myide/deps.txt");
+            if (depsFile.exists()) {
+                File mavenDir = new File(workDir, "maven_libs");
+                mavenDir.mkdirs();
+                int n = 0;
+                try { n = MavenResolver.copyResolvedToDir(ctx, depsFile, mavenDir); }
+                catch (Exception e) { say("Maven copy failed: " + e.getMessage()); }
+                if (n == 0) {
+                    if (autoResolveDeps(depsFile)) {
+                        try { n = MavenResolver.copyResolvedToDir(ctx, depsFile, mavenDir); }
+                        catch (Exception e) { say("Maven copy failed: " + e.getMessage()); }
+                    }
+                }
+                if (n > 0) collectDeps(mavenDir, jarDeps, aarDeps);
+            }
+
+            collectDeps(new File(projectRoot, "libs"), jarDeps, aarDeps);
+            collectDeps(new File(projectRoot, "app/libs"), jarDeps, aarDeps);
+
+            File[] rootFiles = projectRoot.listFiles();
+            if (rootFiles != null) {
+                for (File f : rootFiles) {
+                    if (!f.isFile()) continue;
+                    if (f.getName().endsWith(".jar")) jarDeps.add(f);
+                    else if (f.getName().endsWith(".aar")) aarDeps.add(f);
+                }
+            }
+
+            say("Loading bundled AARs...");
+            aarDeps.addAll(extractBundledAars());
+
+            say("Extracting tools...");
+            File androidJar  = extractAsset("android.jar");
+            File ecjFull     = extractAsset("ecj_full.jar");
+            File ecjResZip   = extractAsset("ecj_res.zip");
+            File d8Zip       = extractAsset("d8.zip");
+            File apksigner   = extractAsset("apksigner-full.jar");
+            File keyPk8      = extractAsset("keys/mykey.pk8");
+            File keyPem      = extractAsset("keys/mykey.x509.pem");
+
+            File ecjResDir = new File(ctx.getFilesDir(), "ecj_res");
+            deleteRecursive(ecjResDir);
+            ecjResDir.mkdirs();
+            unzipTo(ecjResZip, ecjResDir);
+
+            // ---------- 1) Compile app res ----------
+            say("Compiling app resources...");
+            File appResFlat = new File(workDir, "app_res_flat");
+            appResFlat.mkdirs();
+            for (File r : resRoots) {
+                if (!r.exists()) continue;
+                File flatOut = new File(appResFlat, r.getName() + "_" + Math.abs(r.hashCode()));
+                flatOut.mkdirs();
+                runAapt2("compile", "--dir", r.getAbsolutePath(), "-o", flatOut.getAbsolutePath());
+            }
+
+            // ---------- 2) Process AARs ----------
+            say("Building AAR libraries...");
+            File aarClassesDir = new File(workDir, "aar_classes");
+            aarClassesDir.mkdirs();
+
+            List<File> aarFlatFiles = new ArrayList<File>();
+
+            int aarIdx = 0;
+            for (File aar : aarDeps) {
+                if (aar.getName().endsWith(".jar")) {
+                    jarDeps.add(aar);
+                    continue;
+                }
+
+                aarIdx++;
+                say("Processing AAR " + aarIdx + "/" + aarDeps.size() + ": " + aar.getName());
+
+                File extractDir = new File(workDir, "aar_extract/" + aar.getName().replace(".", "_"));
+                extractDir.mkdirs();
+                unzipTo(aar, extractDir);
+
+                File aarClasses = new File(extractDir, "classes.jar");
+                if (aarClasses.exists()) {
+                    File dest = new File(aarClassesDir, aar.getName().replace(".aar", "_classes.jar"));
+                    copyFile(aarClasses, dest);
+                    jarDeps.add(dest);
+                }
+
+                File aarLibs = new File(extractDir, "libs");
+                if (aarLibs.exists()) {
+                    File[] libJars = aarLibs.listFiles();
+                    if (libJars != null) for (File lj : libJars) {
+                        if (lj.isFile() && lj.getName().endsWith(".jar")) {
+                            File dest = new File(aarClassesDir,
+                                aar.getName().replace(".aar", "_") + lj.getName());
+                            copyFile(lj, dest);
+                            jarDeps.add(dest);
+                        }
+                    }
+                }
+
+                File aarRes = new File(extractDir, "res");
+                if (!aarRes.exists()) continue;
+
+                File aarResFlat = new File(workDir, "aar_res_flat/" + aarIdx);
+                aarResFlat.mkdirs();
+                runAapt2("compile", "--dir", aarRes.getAbsolutePath(),
+                         "-o", aarResFlat.getAbsolutePath());
+
+                File[] aarFlat = aarResFlat.listFiles();
+                if (aarFlat != null) for (File f : aarFlat) {
+                    if (f.getName().endsWith(".flat")) aarFlatFiles.add(f);
+                }
+            }
+
+            // ---------- 3) Compile merged app res ----------
+            File patchedManifest = new File(workDir, "AndroidManifest.xml");
+            patchManifest(appManifest, patchedManifest, minSdk, targetSdk);
+
+            say("Linking app resources (aapt2)...");
+            File genDir = new File(workDir, "gen");
+            genDir.mkdirs();
+            File unsignedApk = new File(workDir, "app-unsigned.apk");
+
+            List<String> linkArgs = new ArrayList<String>();
+            linkArgs.add("link");
+            linkArgs.add("-I"); linkArgs.add(androidJar.getAbsolutePath());
+            linkArgs.add("--manifest"); linkArgs.add(patchedManifest.getAbsolutePath());
+            linkArgs.add("--java"); linkArgs.add(genDir.getAbsolutePath());
+            linkArgs.add("--min-sdk-version"); linkArgs.add(String.valueOf(minSdk));
+            linkArgs.add("--target-sdk-version"); linkArgs.add(String.valueOf(targetSdk));
+            linkArgs.add("--auto-add-overlay");
+            linkArgs.add("--no-version-vectors");
+            linkArgs.add("-o"); linkArgs.add(unsignedApk.getAbsolutePath());
+
+            // App res: positional (highest priority)
+            File[] flatDirs = appResFlat.listFiles();
+            if (flatDirs != null) {
+                for (File d : flatDirs) {
+                    File[] inner = d.listFiles();
+                    if (inner != null) for (File f : inner) {
+                        if (f.getName().endsWith(".flat")) linkArgs.add(f.getAbsolutePath());
+                    }
+                }
+            }
+
+            // AAR res: via -R (won't fight each other)
+            for (File f : aarFlatFiles) {
+                linkArgs.add("-R");
+                linkArgs.add(f.getAbsolutePath());
+            }
+
+            runAapt2(linkArgs.toArray(new String[0]));
+
+            // ---------- 4) Compile Java ----------
+            File classesDir = new File(workDir, "classes");
+            classesDir.mkdirs();
+
+            boolean hasKotlin = false;
+            for (File src : sourceRoots) if (hasKtFiles(src)) { hasKotlin = true; break; }
+
+            if (hasKotlin) {
+                String mode = ctx.getSharedPreferences("kotlin", Context.MODE_PRIVATE)
+                                 .getString("mode", "auto");
+                File kotlincJar = null, ktStdlib = null;
+                try { kotlincJar = extractAsset("kotlin-compiler-embeddable-1.9.24.jar"); }
+                catch (Exception ignored) {}
+                try { ktStdlib = extractAsset("kotlin-stdlib-1.9.24.jar"); }
+                catch (Exception ignored) {}
+
+                boolean compiled = false;
+                if ("remote".equals(mode) || ("auto".equals(mode) && kotlincJar == null)) {
+                    say("Kotlin: remote...");
+                    try {
+                        RemoteKotlinCompiler rkc = new RemoteKotlinCompiler(ctx,
+                            new RemoteKotlinCompiler.Progress() {
+                                @Override public void onProgress(String m) { say(m); }
+                            });
+                        rkc.compile(sourceRoots, classesDir);
+                        if (ktStdlib != null && ktStdlib.exists()) jarDeps.add(ktStdlib);
+                        compiled = true;
+                    } catch (Throwable t) { say("Remote Kotlin failed"); }
+                }
+                if (!compiled && kotlincJar != null) {
+                    say("Kotlin: local...");
+                    KotlinCompiler kc = new KotlinCompiler(ctx, new KotlinCompiler.Progress() {
+                        @Override public void onProgress(String m) { say(m); }
+                    });
+                    kc.compile(kotlincJar, ktStdlib, androidJar, sourceRoots,
+                               genDir, classesDir, jarDeps);
+                    if (ktStdlib != null && ktStdlib.exists()) jarDeps.add(ktStdlib);
+                }
+            }
+
+            say("Compiling Java (ECJ)...");
+            compileJava(androidJar, ecjFull, ecjResDir, sourceRoots, genDir, classesDir, jarDeps);
+
+            say("Dexing (D8)...");
+            File dexDir = new File(workDir, "dex");
+            dexDir.mkdirs();
+            compileDex(androidJar, d8Zip, classesDir, dexDir, jarDeps, minSdk);
+
+            say("Packaging APK...");
+            File withDex = new File(workDir, "app-withdex.apk");
+            addDexToApk(unsignedApk, dexDir, withDex);
+
+            say("Signing APK...");
+            File signedApk = new File(workDir, "app-signed.apk");
+            signApk(apksigner, keyPk8, keyPem, withDex, signedApk);
+
+            say("Done");
+            writeBuildLog();
+            return new Result(true, signedApk, log.toString());
 
         } catch (Throwable t) {
-            log.append("ERROR: ").append(causeChain(t)).append('\n');
-            return new Result(false, null, log.toString());
+            String err = "ERROR: " + causeChain(t);
+            log.append(err).append('\n');
+            say(err);
+            writeBuildLog();
+            return new Result(false, null, err);
         }
+    }
+
+    private void writeBuildLog() {
+        try {
+            File dir = new File(Environment.getExternalStorageDirectory(), "MyIDE");
+            if (!dir.exists()) dir.mkdirs();
+            File out = new File(dir, "myide_build.log");
+            FileOutputStream fos = new FileOutputStream(out);
+            fos.write(fullLog.toString().getBytes("UTF-8"));
+            fos.close();
+        } catch (Throwable ignored) {}
     }
 
     private String extractPackage(File manifest) {
@@ -196,7 +457,9 @@ public class ApkBuilder {
 
     private Result fail(StringBuilder log, String msg) {
         log.append(msg).append('\n');
-        return new Result(false, null, log.toString());
+        say(msg);
+        writeBuildLog();
+        return new Result(false, null, msg);
     }
 
     private void collectDeps(File libsDir, List<File> jarOut, List<File> aarOut) {
@@ -232,6 +495,10 @@ public class ApkBuilder {
         cmd.add(path);
         for (String a : args) cmd.add(a);
 
+        StringBuilder cmdLine = new StringBuilder("aapt2 ");
+        for (String a : args) cmdLine.append(a).append(' ');
+        say("$ " + cmdLine.toString());
+
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.redirectErrorStream(true);
         Process p = pb.start();
@@ -244,7 +511,9 @@ public class ApkBuilder {
         int code = p.waitFor();
 
         if (code != 0) {
-            throw new RuntimeException("aapt2 failed (" + code + "):\n" + baos.toString());
+            String out = baos.toString();
+            say("aapt2 failed (" + code + "):\n" + out);
+            throw new RuntimeException("aapt2 failed (" + code + "):\n" + out);
         }
     }
 
@@ -295,11 +564,15 @@ public class ApkBuilder {
         try {
             ok = (Boolean) compile.invoke(instance, (Object) args.toArray(new String[0]));
         } catch (InvocationTargetException ite) {
-            throw new RuntimeException("ECJ error: " + causeChain(ite));
+            String msg = "ECJ error: " + causeChain(ite);
+            say(msg);
+            throw new RuntimeException(msg);
         }
         writer.flush();
         if (ok == null || !ok) {
-            throw new RuntimeException("Java compile failed:\n" + baos.toString());
+            String msg = "Java compile failed:\n" + baos.toString();
+            say(msg);
+            throw new RuntimeException(msg);
         }
     }
 
@@ -366,9 +639,11 @@ public class ApkBuilder {
             try {
                 main.invoke(null, (Object) args.toArray(new String[0]));
             } catch (InvocationTargetException ite) {
-                throw new RuntimeException("D8 error: " + causeChain(ite)
+                String msg = "D8 error: " + causeChain(ite)
                     + "\n--- stdout ---\n" + d8Out.toString()
-                    + "\n--- stderr ---\n" + d8Err.toString());
+                    + "\n--- stderr ---\n" + d8Err.toString();
+                say(msg);
+                throw new RuntimeException(msg);
             }
 
             File[] kids = outputDir.listFiles();
@@ -383,9 +658,11 @@ public class ApkBuilder {
             }
 
             if (!anyDex) {
-                throw new RuntimeException("D8 produced no .dex files.\n"
+                String msg = "D8 produced no .dex files.\n"
                     + "--- stdout ---\n" + d8Out.toString()
-                    + "\n--- stderr ---\n" + d8Err.toString());
+                    + "\n--- stderr ---\n" + d8Err.toString();
+                say(msg);
+                throw new RuntimeException(msg);
             }
         } finally {
             System.setOut(oldOut);
@@ -414,7 +691,9 @@ public class ApkBuilder {
         try {
             main.invoke(null, (Object) args.toArray(new String[0]));
         } catch (InvocationTargetException ite) {
-            throw new RuntimeException("Sign error: " + causeChain(ite));
+            String msg = "Sign error: " + causeChain(ite);
+            say(msg);
+            throw new RuntimeException(msg);
         }
         if (!outApk.exists() || outApk.length() == 0) {
             throw new RuntimeException("Signing produced no output");
