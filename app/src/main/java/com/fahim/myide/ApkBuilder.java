@@ -183,7 +183,7 @@ public class ApkBuilder {
                 }
 
                 aarIdx++;
-                say("Processing AAR " + aarIdx + "/" + aarDeps.size() + ": " + aar.getName());
+                say("Processing AAR " + aarIdx + ": " + aar.getName());
 
                 File extractDir = new File(workDir, "aar_extract/" + aar.getName().replace(".", "_"));
                 extractDir.mkdirs();
@@ -542,6 +542,7 @@ public class ApkBuilder {
         for (File j : extraJars) {
             if (j != null && j.exists()) cp.append(File.pathSeparator).append(j.getAbsolutePath());
         }
+        say("ECJ classpath: " + cp.toString());
 
         List<String> args = new ArrayList<String>();
         args.add("-1.8");
