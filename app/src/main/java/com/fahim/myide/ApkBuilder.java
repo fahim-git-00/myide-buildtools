@@ -244,7 +244,6 @@ public class ApkBuilder {
             linkArgs.add("--no-version-vectors");
             linkArgs.add("-o"); linkArgs.add(unsignedApk.getAbsolutePath());
 
-            // App res: positional (highest priority)
             File[] flatDirs = appResFlat.listFiles();
             if (flatDirs != null) {
                 for (File d : flatDirs) {
@@ -255,7 +254,6 @@ public class ApkBuilder {
                 }
             }
 
-            // AAR res: via -R (won't fight each other)
             for (File f : aarFlatFiles) {
                 linkArgs.add("-R");
                 linkArgs.add(f.getAbsolutePath());
@@ -544,7 +542,6 @@ public class ApkBuilder {
         for (File j : extraJars) {
             if (j != null && j.exists()) cp.append(File.pathSeparator).append(j.getAbsolutePath());
         }
-        say("ECJ classpath: " + cp.toString());
 
         List<String> args = new ArrayList<String>();
         args.add("-1.8");
