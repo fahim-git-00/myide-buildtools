@@ -165,20 +165,15 @@ public class ApkBuilder {
                 runAapt2("compile", "--dir", r.getAbsolutePath(), "-o", flatOut.getAbsolutePath());
             }
 
-            // ---------- 2) Build AAR static libs ----------
+            // ---------- 2) Process AARs ----------
             say("Building AAR libraries...");
             File aarClassesDir = new File(workDir, "aar_classes");
             aarClassesDir.mkdirs();
 
-            List<File> aarStaticLibs = new ArrayList<File>();
-
-            // Prepare R.java dir for aar packages
-            File aarRDir = new File(workDir, "aar_gen");
-            aarRDir.mkdirs();
+            List<File> aarFlatFiles = new ArrayList<File>();
 
             int aarIdx = 0;
             for (File aar : aarDeps) {
-                // Plain JAR: just add to classpath, nothing else to do
                 if (aar.getName().endsWith(".jar")) {
                     jarDeps.add(aar);
                     continue;
@@ -186,11 +181,12 @@ public class ApkBuilder {
 
                 aarIdx++;
                 say("Processing AAR " + aarIdx + "/" + aarDeps.size() + ": " + aar.getName());
+
                 File extractDir = new File(workDir, "aar_extract/" + aar.getName().replace(".", "_"));
                 extractDir.mkdirs();
                 unzipTo(aar, extractDir);
 
-                // classes.jar
+                // ---- classes.jar ----
                 File aarClasses = new File(extractDir, "classes.jar");
                 if (aarClasses.exists()) {
                     File dest = new File(aarClassesDir, aar.getName().replace(".aar", "_classes.jar"));
@@ -198,67 +194,64 @@ public class ApkBuilder {
                     jarDeps.add(dest);
                 }
 
-                // libs/*.jar
+                // ---- libs/*.jar ----
                 File aarLibs = new File(extractDir, "libs");
                 if (aarLibs.exists()) {
                     File[] libJars = aarLibs.listFiles();
                     if (libJars != null) for (File lj : libJars) {
                         if (lj.isFile() && lj.getName().endsWith(".jar")) {
-                            File dest = new File(aarClassesDir, aar.getName().replace(".aar", "_") + lj.getName());
+                            File dest = new File(aarClassesDir,
+                                aar.getName().replace(".aar", "_") + lj.getName());
                             copyFile(lj, dest);
                             jarDeps.add(dest);
                         }
                     }
                 }
 
+                // ---- res ----
                 File aarRes = new File(extractDir, "res");
-                File aarManifest = new File(extractDir, "AndroidManifest.xml");
+                if (!aarRes.exists()) continue;
 
-                if (!aarRes.exists() || !aarManifest.exists()) continue;
-
-                // Compile res
                 File aarResFlat = new File(workDir, "aar_res_flat/" + aarIdx);
                 aarResFlat.mkdirs();
-                runAapt2("compile", "--dir", aarRes.getAbsolutePath(), "-o", aarResFlat.getAbsolutePath());
-
-                // Extract package name from aar manifest
-                String aarPkg = extractPackage(aarManifest);
-
-                // Generate R.java
-                File aarRJava = new File(aarRDir, "r" + aarIdx);
-                aarRJava.mkdirs();
-
-                // Link aar as static library
-                File staticLib = new File(workDir, "aar_static_lib/" + aarIdx + ".apk");
-                staticLib.getParentFile().mkdirs();
-
-                List<String> staticArgs = new ArrayList<String>();
-                staticArgs.add("link");
-                staticArgs.add("--static-lib");
-                staticArgs.add("-I"); staticArgs.add(androidJar.getAbsolutePath());
-                staticArgs.add("--manifest"); staticArgs.add(aarManifest.getAbsolutePath());
-                staticArgs.add("--java"); staticArgs.add(aarRJava.getAbsolutePath());
-                if (aarPkg != null && aarPkg.length() > 0) {
-                    staticArgs.add("--rename-manifest-package");
-                    staticArgs.add(aarPkg);
-                }
-                staticArgs.add("--min-sdk-version"); staticArgs.add(String.valueOf(minSdk));
-                staticArgs.add("--target-sdk-version"); staticArgs.add(String.valueOf(targetSdk));
-                staticArgs.add("-o"); staticArgs.add(staticLib.getAbsolutePath());
+                runAapt2("compile", "--dir", aarRes.getAbsolutePath(),
+                         "-o", aarResFlat.getAbsolutePath());
 
                 File[] aarFlat = aarResFlat.listFiles();
                 if (aarFlat != null) for (File f : aarFlat) {
-                    if (f.getName().endsWith(".flat")) staticArgs.add(f.getAbsolutePath());
+                    if (f.getName().endsWith(".flat")) aarFlatFiles.add(f);
+                }
+
+                // ---- generate R.java for this AAR's package ----
+                File aarManifest = new File(extractDir, "AndroidManifest.xml");
+                if (!aarManifest.exists()) continue;
+                String aarPkg = extractPackage(aarManifest);
+                if (aarPkg == null || aarPkg.length() == 0) continue;
+
+                File aarRJavaOut = new File(workDir, "aar_rgen/r" + aarIdx);
+                aarRJavaOut.mkdirs();
+
+                List<String> rArgs = new ArrayList<String>();
+                rArgs.add("link");
+                rArgs.add("--static-lib");
+                rArgs.add("-I"); rArgs.add(androidJar.getAbsolutePath());
+                rArgs.add("--manifest"); rArgs.add(aarManifest.getAbsolutePath());
+                rArgs.add("--java"); rArgs.add(aarRJavaOut.getAbsolutePath());
+                rArgs.add("--rename-manifest-package"); rArgs.add(aarPkg);
+                rArgs.add("--min-sdk-version"); rArgs.add(String.valueOf(minSdk));
+                rArgs.add("--target-sdk-version"); rArgs.add(String.valueOf(targetSdk));
+                rArgs.add("--no-version-vectors");
+
+                File[] af = aarResFlat.listFiles();
+                if (af != null) for (File f : af) {
+                    if (f.getName().endsWith(".flat")) rArgs.add(f.getAbsolutePath());
                 }
 
                 try {
-                    runAapt2(staticArgs.toArray(new String[0]));
-                    aarStaticLibs.add(staticLib);
-
-                    // Add generated R.java to source roots
-                    sourceRoots.add(aarRJava);
+                    runAapt2(rArgs.toArray(new String[0]));
+                    sourceRoots.add(aarRJavaOut);
                 } catch (Exception e) {
-                    say("AAR " + aar.getName() + " link failed: " + e.getMessage());
+                    say("AAR R.java gen failed for " + aar.getName() + ": " + e.getMessage());
                 }
             }
 
@@ -274,15 +267,12 @@ public class ApkBuilder {
             List<String> linkArgs = new ArrayList<String>();
             linkArgs.add("link");
             linkArgs.add("-I"); linkArgs.add(androidJar.getAbsolutePath());
-            for (File sl : aarStaticLibs) {
-                linkArgs.add("-I");
-                linkArgs.add(sl.getAbsolutePath());
-            }
             linkArgs.add("--manifest"); linkArgs.add(patchedManifest.getAbsolutePath());
             linkArgs.add("--java"); linkArgs.add(genDir.getAbsolutePath());
             linkArgs.add("--min-sdk-version"); linkArgs.add(String.valueOf(minSdk));
             linkArgs.add("--target-sdk-version"); linkArgs.add(String.valueOf(targetSdk));
             linkArgs.add("--auto-add-overlay");
+            linkArgs.add("--no-version-vectors");
             linkArgs.add("-o"); linkArgs.add(unsignedApk.getAbsolutePath());
 
             File[] flatDirs = appResFlat.listFiles();
@@ -293,6 +283,9 @@ public class ApkBuilder {
                         if (f.getName().endsWith(".flat")) linkArgs.add(f.getAbsolutePath());
                     }
                 }
+            }
+            for (File f : aarFlatFiles) {
+                linkArgs.add(f.getAbsolutePath());
             }
             runAapt2(linkArgs.toArray(new String[0]));
 
