@@ -613,6 +613,23 @@ public class ApkBuilder {
 
         if (!outputDir.exists()) outputDir.mkdirs();
 
+        // Jar-up all classes for faster d8 (fewer file descriptors).
+        File allClassesJar = new File(outputDir.getParentFile(), "all-classes.jar");
+        ZipOutputStream jarOut = new ZipOutputStream(new FileOutputStream(allClassesJar));
+        byte[] copyBuf = new byte[8192];
+        File classesRoot = classesDir;
+        for (File cf : classFiles) {
+            String rel = cf.getAbsolutePath().substring(
+                classesRoot.getAbsolutePath().length() + 1).replace('\\', '/');
+            jarOut.putNextEntry(new ZipEntry(rel));
+            FileInputStream fin = new FileInputStream(cf);
+            int n;
+            while ((n = fin.read(copyBuf)) > 0) jarOut.write(copyBuf, 0, n);
+            fin.close();
+            jarOut.closeEntry();
+        }
+        jarOut.close();
+
         PrintStream oldOut = System.out;
         PrintStream oldErr = System.err;
         ByteArrayOutputStream d8Out = new ByteArrayOutputStream();
@@ -634,6 +651,9 @@ public class ApkBuilder {
             args.add("--output");   args.add(outputDir.getAbsolutePath());
             args.add("--min-api");  args.add(String.valueOf(minSdk));
             args.add("--lib");      args.add(androidJar.getAbsolutePath());
+            args.add("--no-desugaring");
+            args.add("--thread-count");
+            args.add(String.valueOf(Runtime.getRuntime().availableProcessors()));
 
             for (File j : extraJars) {
                 if (j != null && j.exists() && j.getName().endsWith(".jar")) {
@@ -641,7 +661,7 @@ public class ApkBuilder {
                 }
             }
 
-            for (File f : classFiles) args.add(f.getAbsolutePath());
+            args.add(allClassesJar.getAbsolutePath());
 
             try {
                 main.invoke(null, (Object) args.toArray(new String[0]));
