@@ -57,6 +57,24 @@ public class ApkBuilder {
     public Result build(File projectRoot, int minSdk, int targetSdk) {
         StringBuilder log = new StringBuilder();
         try {
+            // ---- aapt2 version check ----
+            try {
+                String aapt2Path = ctx.getApplicationInfo().nativeLibraryDir + "/libaapt2.so";
+                ProcessBuilder pbV = new ProcessBuilder(aapt2Path, "version");
+                pbV.redirectErrorStream(true);
+                Process pV = pbV.start();
+                ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                InputStream isV = pV.getInputStream();
+                byte[] bV = new byte[1024];
+                int nV;
+                while ((nV = isV.read(bV)) > 0) bo.write(bV, 0, nV);
+                pV.waitFor();
+                say("aapt2 version: " + bo.toString().trim());
+            } catch (Throwable t) {
+                say("aapt2 version check failed: " + t);
+            }
+            // ---- end version check ----
+
             say("Preparing...");
 
             File workDir = new File(ctx.getFilesDir(), "build_area");
