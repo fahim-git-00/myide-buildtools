@@ -5,7 +5,6 @@ import android.app.AlertDialog;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
@@ -14,7 +13,6 @@ import android.os.Environment;
 import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.Menu;
@@ -31,7 +29,6 @@ import android.widget.EditText;
 import android.widget.HorizontalScrollView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
-import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -848,26 +845,71 @@ public class MainActivity extends Activity {
             .show();
     }
 
+    /**
+     * Detects the project root.
+     * Priority:
+     *   1. Picked dir has AndroidManifest.xml AND res/ AND src/ (Gradle-ish flat)
+     *   2. Picked/app/src/main  (Gradle module with main source set)
+     *   3. Picked/src/main
+     *   4. Picked/src
+     *   5. Picked/app (fallback)
+     *   6. Any immediate subdir matching the above
+     */
     private File findProjectRoot(File picked) {
-        if (new File(picked, "AndroidManifest.xml").exists()) return picked;
-        File a = new File(picked, "app/src/main");
-        if (new File(a, "AndroidManifest.xml").exists()) return a;
-        File b = new File(picked, "src/main");
-        if (new File(b, "AndroidManifest.xml").exists()) return b;
-        File c = new File(picked, "src");
-        if (new File(c, "AndroidManifest.xml").exists()) return c;
+        File direct = matchRoot(picked);
+        if (direct != null) return direct;
+
+        File gradleMain = new File(picked, "app/src/main");
+        if (matchRoot(gradleMain) != null) return gradleMain;
+
+        File srcMain = new File(picked, "src/main");
+        if (matchRoot(srcMain) != null) return srcMain;
+
+        File srcFlat = new File(picked, "src");
+        if (matchRoot(srcFlat) != null) return srcFlat;
+
+        File appDir = new File(picked, "app");
+        if (matchRoot(appDir) != null) return appDir;
+
         File[] kids = picked.listFiles();
         if (kids != null) {
             for (File k : kids) {
                 if (!k.isDirectory()) continue;
-                if (new File(k, "AndroidManifest.xml").exists()) return k;
+
+                File r = matchRoot(k);
+                if (r != null) return r;
+
                 File k1 = new File(k, "app/src/main");
-                if (new File(k1, "AndroidManifest.xml").exists()) return k1;
+                if (matchRoot(k1) != null) return k1;
+
                 File k2 = new File(k, "src/main");
-                if (new File(k2, "AndroidManifest.xml").exists()) return k2;
+                if (matchRoot(k2) != null) return k2;
+
                 File k3 = new File(k, "src");
-                if (new File(k3, "AndroidManifest.xml").exists()) return k3;
+                if (matchRoot(k3) != null) return k3;
+
+                File k4 = new File(k, "app");
+                if (matchRoot(k4) != null) return k4;
             }
+        }
+        return null;
+    }
+
+    /**
+     * Returns dir if it looks like a real Android project root:
+     *   has AndroidManifest.xml
+     *   has res/
+     *   has src/ OR java/
+     */
+    private File matchRoot(File dir) {
+        if (dir == null || !dir.isDirectory()) return null;
+        File manifest = new File(dir, "AndroidManifest.xml");
+        File res = new File(dir, "res");
+        File src = new File(dir, "src");
+        File javaDir = new File(dir, "java");
+        if (manifest.isFile() && res.isDirectory()
+            && (src.isDirectory() || javaDir.isDirectory())) {
+            return dir;
         }
         return null;
     }
