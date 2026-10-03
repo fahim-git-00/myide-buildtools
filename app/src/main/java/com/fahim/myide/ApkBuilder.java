@@ -489,7 +489,20 @@ public class ApkBuilder {
         File out = new File(ctx.getFilesDir(), name);
         File parent = out.getParentFile();
         if (parent != null && !parent.exists()) parent.mkdirs();
-        if (out.exists() && out.length() > 0) return out;
+
+        long assetLen = -1;
+        try {
+            android.content.res.AssetFileDescriptor fd = ctx.getAssets().openFd(name);
+            assetLen = fd.getLength();
+            fd.close();
+        } catch (Exception ignored) {}
+
+        if (out.exists() && out.length() > 0) {
+            if (assetLen < 0 || assetLen == out.length()) {
+                return out;
+            }
+            out.delete();
+        }
 
         InputStream in = ctx.getAssets().open(name);
         FileOutputStream fos = new FileOutputStream(out);
@@ -610,7 +623,6 @@ public class ApkBuilder {
         }
     }
 
-    // ============ DEX with R8 → D8 fallback ============
     private void compileDex(File androidJar, File d8Zip, File classesDir,
                             File outputDir, List<File> extraJars, int minSdk) throws Exception {
         List<File> classFiles = new ArrayList<File>();
