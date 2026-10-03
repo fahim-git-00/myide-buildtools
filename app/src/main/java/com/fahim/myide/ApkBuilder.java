@@ -1,6 +1,7 @@
 package com.fahim.myide;
 
 import android.content.Context;
+import android.os.Environment;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -54,6 +55,40 @@ public class ApkBuilder {
     public Result build(File projectRoot, int minSdk, int targetSdk) {
         StringBuilder log = new StringBuilder();
         try {
+            // ===== DEBUG: dump aapt2 link --help =====
+            try {
+                String aapt2Path = ctx.getApplicationInfo().nativeLibraryDir + "/libaapt2.so";
+                File dbg = new File(ctx.getExternalFilesDir(null), "aapt2_help.txt");
+                StringBuilder dbgLog = new StringBuilder();
+                dbgLog.append("tried path: ").append(aapt2Path).append('\n');
+                dbgLog.append("exists: ").append(new File(aapt2Path).exists()).append('\n');
+
+                ProcessBuilder pbDbg = new ProcessBuilder(aapt2Path, "link", "--help");
+                pbDbg.redirectErrorStream(true);
+                Process pDbg = pbDbg.start();
+                ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                InputStream iDbg = pDbg.getInputStream();
+                byte[] bb = new byte[4096];
+                int nn;
+                while ((nn = iDbg.read(bb)) > 0) bo.write(bb, 0, nn);
+                pDbg.waitFor();
+                dbgLog.append("---- output ----\n").append(bo.toString());
+
+                FileOutputStream fo = new FileOutputStream(dbg);
+                fo.write(dbgLog.toString().getBytes("UTF-8"));
+                fo.close();
+                say("aapt2 help at " + dbg.getAbsolutePath());
+            } catch (Throwable t) {
+                try {
+                    File dbg = new File(ctx.getExternalFilesDir(null), "aapt2_help.txt");
+                    FileOutputStream fo = new FileOutputStream(dbg);
+                    fo.write(("ERROR: " + t + "\n").getBytes("UTF-8"));
+                    fo.close();
+                } catch (Throwable ignored) {}
+                say("dbg aapt2 failed: " + t);
+            }
+            // ===== END DEBUG =====
+
             say("Preparing...");
 
             File workDir = new File(ctx.getFilesDir(), "build_area");
@@ -186,7 +221,6 @@ public class ApkBuilder {
                 extractDir.mkdirs();
                 unzipTo(aar, extractDir);
 
-                // ---- classes.jar ----
                 File aarClasses = new File(extractDir, "classes.jar");
                 if (aarClasses.exists()) {
                     File dest = new File(aarClassesDir, aar.getName().replace(".aar", "_classes.jar"));
@@ -194,7 +228,6 @@ public class ApkBuilder {
                     jarDeps.add(dest);
                 }
 
-                // ---- libs/*.jar ----
                 File aarLibs = new File(extractDir, "libs");
                 if (aarLibs.exists()) {
                     File[] libJars = aarLibs.listFiles();
@@ -208,7 +241,6 @@ public class ApkBuilder {
                     }
                 }
 
-                // ---- res ----
                 File aarRes = new File(extractDir, "res");
                 if (!aarRes.exists()) continue;
 
@@ -222,7 +254,6 @@ public class ApkBuilder {
                     if (f.getName().endsWith(".flat")) aarFlatFiles.add(f);
                 }
 
-                // ---- generate R.java for this AAR's package ----
                 File aarManifest = new File(extractDir, "AndroidManifest.xml");
                 if (!aarManifest.exists()) continue;
                 String aarPkg = extractPackage(aarManifest);
