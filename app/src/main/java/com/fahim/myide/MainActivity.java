@@ -48,7 +48,6 @@ public class MainActivity extends Activity {
 
     private static final int REQ_MANAGE_STORAGE = 2001;
 
-    // Colors
     private static final int C_BG        = 0xFF1E1E1E;
     private static final int C_SURFACE   = 0xFF252526;
     private static final int C_SURFACE2  = 0xFF2D2D30;
@@ -492,8 +491,6 @@ public class MainActivity extends Activity {
         return super.onOptionsItemSelected(item);
     }
 
-    // ================= SIDEBAR =================
-
     private void openSidebar() {
         if (sidebarOpen && sidebar.getVisibility() == View.VISIBLE) return;
         sidebarOpen = true;
@@ -561,8 +558,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    // ================= PERMISSIONS =================
-
     private void requestStoragePermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= 30) {
             if (!Environment.isExternalStorageManager()) {
@@ -589,8 +584,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    // ================= FOLDER PICKER (NEW PROFESSIONAL) =================
-
     private interface FolderCallback { void onChosen(File folder); }
 
     private void pickProjectFolder() {
@@ -613,7 +606,6 @@ public class MainActivity extends Activity {
         return (int)(v * getResources().getDisplayMetrics().density);
     }
 
-    /** Professional dark folder picker. */
     private void showFolderPicker(final File startDir, final FolderCallback cb) {
         final File[] currentDir = new File[]{ startDir };
 
@@ -624,7 +616,6 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(C_SURFACE);
 
-        // ---- Header ----
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
         header.setBackgroundColor(C_BG);
@@ -651,7 +642,6 @@ public class MainActivity extends Activity {
 
         root.addView(header);
 
-        // ---- List (rows) ----
         final ListView list = new ListView(this);
         list.setBackgroundColor(C_SURFACE);
         list.setDivider(null);
@@ -722,7 +712,6 @@ public class MainActivity extends Activity {
         root.addView(list, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        // ---- Bottom action bar ----
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setBackgroundColor(C_SURFACE2);
@@ -859,8 +848,6 @@ public class MainActivity extends Activity {
             .show();
     }
 
-    // ================= FIND PROJECT ROOT =================
-
     private File findProjectRoot(File picked) {
         if (new File(picked, "AndroidManifest.xml").exists()) return picked;
         File a = new File(picked, "app/src/main");
@@ -884,8 +871,6 @@ public class MainActivity extends Activity {
         }
         return null;
     }
-
-    // ================= NEW PROJECT DIALOG =================
 
     private void showNewProjectDialog() {
         LinearLayout root = new LinearLayout(this);
@@ -1081,8 +1066,6 @@ public class MainActivity extends Activity {
             .replace(">", "&gt;").replace("\"", "&quot;");
     }
 
-    // ================= BUILD =================
-
     private void runBuild() {
         if (projectRoot == null) { toast("Pick or create a project first"); return; }
         flushActiveTab();
@@ -1272,8 +1255,6 @@ public class MainActivity extends Activity {
         in.close();
         return new String(out.toByteArray(), "UTF-8");
     }
-
-    // ================= SAVE =================
 
     private void saveFile() {
         if (currentFile == null) { saveFileAs(); return; }
