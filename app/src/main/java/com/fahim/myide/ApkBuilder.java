@@ -323,7 +323,7 @@ public class ApkBuilder {
             say("Compiling Java (ECJ)...");
             compileJava(androidJar, ecjFull, ecjResDir, sourceRoots, genDir, classesDir, jarDeps);
 
-            say("Dexing (D8)...");
+            say("Dexing (R8)...");
             File dexDir = new File(workDir, "dex");
             dexDir.mkdirs();
             compileDex(androidJar, d8Zip, classesDir, dexDir, jarDeps, minSdk);
@@ -638,13 +638,22 @@ public class ApkBuilder {
                 null,
                 ctx.getClassLoader());
 
-            Class<?> d8Class = loader.loadClass("com.android.tools.r8.D8");
-            Method main = d8Class.getMethod("main", String[].class);
+            Class<?> r8Class = loader.loadClass("com.android.tools.r8.R8");
+            Method main = r8Class.getMethod("main", String[].class);
 
             List<String> args = new ArrayList<String>();
+            args.add("--release");
             args.add("--output");   args.add(outputDir.getAbsolutePath());
-            args.add("--min-api");  args.add(String.valueOf(minSdk));
-            args.add("--lib");      args.add(androidJar.getAbsolutePath());
+            args.add("--min-api");  args.add(String.valueOf(Math.max(minSdk, 24)));
+
+            File keepRules = new File(ctx.getFilesDir(), "r8-keep.pro");
+            writeKeepRules(keepRules);
+            args.add("--pg-conf");
+            args.add(keepRules.getAbsolutePath());
+
+            File mapFile = new File(outputDir, "mapping.txt");
+            args.add("--pg-map-output");
+            args.add(mapFile.getAbsolutePath());
 
             for (File j : extraJars) {
                 if (j != null && j.exists() && j.getName().endsWith(".jar")) {
@@ -657,7 +666,7 @@ public class ApkBuilder {
             try {
                 main.invoke(null, (Object) args.toArray(new String[0]));
             } catch (InvocationTargetException ite) {
-                String msg = "D8 error: " + causeChain(ite)
+                String msg = "R8 error: " + causeChain(ite)
                     + "\n--- stdout ---\n" + d8Out.toString()
                     + "\n--- stderr ---\n" + d8Err.toString();
                 say(msg);
@@ -676,7 +685,7 @@ public class ApkBuilder {
             }
 
             if (!anyDex) {
-                String msg = "D8 produced no .dex files.\n"
+                String msg = "R8 produced no .dex files.\n"
                     + "--- stdout ---\n" + d8Out.toString()
                     + "\n--- stderr ---\n" + d8Err.toString();
                 say(msg);
@@ -686,6 +695,30 @@ public class ApkBuilder {
             System.setOut(oldOut);
             System.setErr(oldErr);
         }
+    }
+
+    private void writeKeepRules(File f) throws Exception {
+        String rules =
+            "-keep public class * extends android.app.Activity\n" +
+            "-keep public class * extends android.app.Application\n" +
+            "-keep public class * extends android.app.Service\n" +
+            "-keep public class * extends android.content.BroadcastReceiver\n" +
+            "-keep public class * extends android.content.ContentProvider\n" +
+            "-keep public class * extends android.view.View {\n" +
+            "    public <init>(android.content.Context);\n" +
+            "    public <init>(android.content.Context, android.util.AttributeSet);\n" +
+            "    public <init>(android.content.Context, android.util.AttributeSet, int);\n" +
+            "}\n" +
+            "-keepclassmembers class * {\n" +
+            "    @android.webkit.JavascriptInterface <methods>;\n" +
+            "}\n" +
+            "-keepattributes *Annotation*\n" +
+            "-keepattributes SourceFile,LineNumberTable\n" +
+            "-dontwarn **\n" +
+            "-ignorewarnings\n";
+        FileOutputStream fos = new FileOutputStream(f);
+        fos.write(rules.getBytes("UTF-8"));
+        fos.close();
     }
 
     private void signApk(File apksigner, File pk8, File pem,
