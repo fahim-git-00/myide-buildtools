@@ -76,7 +76,6 @@ public class ApkBuilder {
             sourceRoots.add(appSrc);
             resRoots.add(appRes);
 
-            // Also include sibling sources (e.g. java/ next to src/)
             File parent = appManifest.getParentFile();
             if (parent != null) {
                 File sibSrc = new File(parent, "src");
@@ -99,7 +98,6 @@ public class ApkBuilder {
                         File modDir = new File(projectRoot, modName);
                         if (!modDir.exists()) continue;
 
-                        File modManifest = findManifest(modDir);
                         File modRes = findRes(modDir);
                         File modSrc = findSrc(modDir);
 
@@ -128,20 +126,13 @@ public class ApkBuilder {
                     if (autoResolveDeps(depsFile)) {
                         try {
                             n = MavenResolver.copyResolvedToDir(ctx, depsFile, mavenDir);
-                            say("Copied " + n + " Maven files after resolve");
                         } catch (Exception e) {
                             say("Maven copy failed after resolve: " + e.getMessage());
                         }
                     }
-                } else {
-                    say("Copied " + n + " Maven files");
                 }
 
-                if (n > 0) {
-                    collectDeps(mavenDir, jarDeps, aarDeps);
-                } else {
-                    say("No Maven deps available — build may fail if code imports them");
-                }
+                if (n > 0) collectDeps(mavenDir, jarDeps, aarDeps);
             }
 
             collectDeps(new File(projectRoot, "libs"), jarDeps, aarDeps);
@@ -155,6 +146,12 @@ public class ApkBuilder {
                     else if (f.getName().endsWith(".aar")) aarDeps.add(f);
                 }
             }
+
+            // ---- BUNDLED AARs from assets/aar/ ----
+            say("Loading bundled AndroidX/Material AARs...");
+            List<File> bundledAars = extractBundledAars(workDir);
+            say("Loaded " + bundledAars.size() + " bundled AARs");
+            aarDeps.addAll(bundledAars);
 
             say("Extracting tools...");
             File androidJar  = extractAsset("android.jar");
@@ -179,6 +176,9 @@ public class ApkBuilder {
 
             File aarClassesDir = new File(workDir, "aar_classes");
             aarClassesDir.mkdirs();
+
+            List<File> aarManifestFragments = new ArrayList<File>();
+
             for (File aar : aarDeps) {
                 say("Extracting AAR: " + aar.getName());
                 File extractDir = new File(workDir, "aar_extract/" + aar.getName().replace(".", "_"));
@@ -187,6 +187,9 @@ public class ApkBuilder {
 
                 File aarRes = new File(extractDir, "res");
                 if (aarRes.exists()) copyDirContents(aarRes, mergedRes);
+
+                File aarManifest = new File(extractDir, "AndroidManifest.xml");
+                if (aarManifest.exists()) aarManifestFragments.add(aarManifest);
 
                 File aarClasses = new File(extractDir, "classes.jar");
                 if (aarClasses.exists()) {
@@ -244,7 +247,7 @@ public class ApkBuilder {
                 boolean compiled = false;
 
                 if ("remote".equals(mode) || ("auto".equals(mode) && kotlincJar == null)) {
-                    say("Kotlin: using remote compiler (GitHub Actions)...");
+                    say("Kotlin: using remote compiler...");
                     try {
                         RemoteKotlinCompiler rkc = new RemoteKotlinCompiler(ctx,
                             new RemoteKotlinCompiler.Progress() {
@@ -255,18 +258,10 @@ public class ApkBuilder {
                         compiled = true;
                     } catch (Throwable t) {
                         say("Remote Kotlin failed: " + causeChain(t));
-                        if ("remote".equals(mode)) {
-                            throw new RuntimeException("Remote Kotlin failed", t);
-                        }
                     }
                 }
 
-                if (!compiled && ("local".equals(mode) || "auto".equals(mode))) {
-                    if (kotlincJar == null) {
-                        throw new RuntimeException(
-                            "Kotlin sources found but kotlin-compiler-embeddable-1.9.24.jar " +
-                            "not in assets/ and remote mode did not succeed.");
-                    }
+                if (!compiled && kotlincJar != null) {
                     say("Kotlin: using local compiler...");
                     KotlinCompiler kc = new KotlinCompiler(ctx, new KotlinCompiler.Progress() {
                         @Override public void onProgress(String m) { say(m); }
@@ -302,7 +297,34 @@ public class ApkBuilder {
         }
     }
 
-    // ---- project layout helpers ----
+    private List<File> extractBundledAars(File workDir) {
+        List<File> out = new ArrayList<File>();
+        try {
+            String[] names = ctx.getAssets().list("aar");
+            if (names == null) return out;
+
+            File aarCache = new File(ctx.getFilesDir(), "bundled_aar");
+            if (!aarCache.exists()) aarCache.mkdirs();
+
+            for (String n : names) {
+                if (!n.endsWith(".aar")) continue;
+                File dest = new File(aarCache, n);
+                if (!dest.exists() || dest.length() == 0) {
+                    InputStream in = ctx.getAssets().open("aar/" + n);
+                    FileOutputStream fos = new FileOutputStream(dest);
+                    byte[] buf = new byte[8192];
+                    int r;
+                    while ((r = in.read(buf)) > 0) fos.write(buf, 0, r);
+                    fos.close();
+                    in.close();
+                }
+                out.add(dest);
+            }
+        } catch (Exception e) {
+            say("Bundled AAR load failed: " + e.getMessage());
+        }
+        return out;
+    }
 
     private File findManifest(File root) {
         if (root == null) return null;
@@ -359,9 +381,7 @@ public class ApkBuilder {
         final AtomicBoolean ok = new AtomicBoolean(false);
 
         MavenResolver resolver = new MavenResolver(ctx, new MavenResolver.Progress() {
-            @Override public void onProgress(String message) {
-                say(message);
-            }
+            @Override public void onProgress(String message) { say(message); }
             @Override public void onDone(boolean success, String message) {
                 ok.set(success);
                 say("Resolve: " + message);
@@ -372,10 +392,7 @@ public class ApkBuilder {
         try {
             resolver.resolve(depsFile);
             boolean finished = latch.await(5, TimeUnit.MINUTES);
-            if (!finished) {
-                say("Resolve timed out");
-                return false;
-            }
+            if (!finished) return false;
             return ok.get();
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
@@ -576,8 +593,6 @@ public class ApkBuilder {
 
             if (!anyDex) {
                 throw new RuntimeException("D8 produced no .dex files.\n"
-                    + "Inputs: " + classFiles.size() + " .class files, "
-                    + extraJars.size() + " extra jars\n"
                     + "--- stdout ---\n" + d8Out.toString()
                     + "\n--- stderr ---\n" + d8Err.toString());
             }
@@ -615,38 +630,26 @@ public class ApkBuilder {
         }
     }
 
-    /**
-     * Rewrites the source manifest:
-     * - Copies the original <manifest ... package="..."> and keeps the package attr.
-     * - Removes any existing <uses-sdk .../>.
-     * - Injects a fresh <uses-sdk> using the requested min/target SDK values.
-     */
     private void patchManifest(File in, File out, int minSdk, int targetSdk) throws Exception {
         String xml = readFile(in);
 
-        // Extract package="..."
         String pkg = "";
         Matcher pm = Pattern.compile("package\\s*=\\s*\"([^\"]+)\"").matcher(xml);
         if (pm.find()) pkg = pm.group(1);
 
-        // Strip existing uses-sdk
         xml = xml.replaceAll("<uses-sdk[^>]*/>", "");
         xml = xml.replaceAll("<uses-sdk.*?</uses-sdk>", "");
-
-        // Strip applicationId if any (not valid in manifest)
         xml = xml.replaceAll("android:applicationId\\s*=\\s*\"[^\"]*\"", "");
 
         String usesSdk = "<uses-sdk android:minSdkVersion=\"" + minSdk
             + "\" android:targetSdkVersion=\"" + targetSdk + "\" />\n    ";
 
-        // Insert uses-sdk right after <manifest ...>
         int mStart = xml.indexOf("<manifest");
         int mEnd = xml.indexOf('>', mStart);
         if (mStart >= 0 && mEnd > 0) {
             String head = xml.substring(0, mEnd + 1);
             String tail = xml.substring(mEnd + 1);
 
-            // Make sure package is present
             if (pkg != null && pkg.length() > 0 && !head.contains("package=")) {
                 head = head.replaceFirst("<manifest", "<manifest package=\"" + pkg + "\"");
             }
