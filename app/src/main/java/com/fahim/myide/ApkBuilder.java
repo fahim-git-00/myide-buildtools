@@ -354,15 +354,6 @@ public class ApkBuilder {
         } catch (Throwable ignored) {}
     }
 
-    private String extractPackage(File manifest) {
-        try {
-            String xml = readFile(manifest);
-            Matcher m = Pattern.compile("package\\s*=\\s*\"([^\"]+)\"").matcher(xml);
-            if (m.find()) return m.group(1);
-        } catch (Exception ignored) {}
-        return null;
-    }
-
     private List<File> extractBundledAars() {
         List<File> out = new ArrayList<File>();
         try {
@@ -490,19 +481,8 @@ public class ApkBuilder {
         File parent = out.getParentFile();
         if (parent != null && !parent.exists()) parent.mkdirs();
 
-        long assetLen = -1;
-        try {
-            android.content.res.AssetFileDescriptor fd = ctx.getAssets().openFd(name);
-            assetLen = fd.getLength();
-            fd.close();
-        } catch (Exception ignored) {}
-
-        if (out.exists() && out.length() > 0) {
-            if (assetLen < 0 || assetLen == out.length()) {
-                return out;
-            }
-            out.delete();
-        }
+        // Always overwrite — avoids stale cache from old APK versions.
+        if (out.exists()) out.delete();
 
         InputStream in = ctx.getAssets().open(name);
         FileOutputStream fos = new FileOutputStream(out);
@@ -511,6 +491,8 @@ public class ApkBuilder {
         while ((n = in.read(buf)) > 0) fos.write(buf, 0, n);
         fos.close();
         in.close();
+
+        say("Extracted " + name + " (" + out.length() + " bytes)");
         return out;
     }
 
