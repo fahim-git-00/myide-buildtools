@@ -65,18 +65,27 @@ public class ApkBuilder {
             List<File> jarDeps = new ArrayList<File>();
             List<File> aarDeps = new ArrayList<File>();
 
-            File appManifest = new File(projectRoot, "AndroidManifest.xml");
-            File appRes = new File(projectRoot, "res");
-            File appSrc = new File(projectRoot, "src");
-            if (!appSrc.exists()) appSrc = new File(projectRoot, "java");
-            if (!appSrc.exists()) appSrc = new File(projectRoot, "src/main/java");
+            File appManifest = findManifest(projectRoot);
+            File appRes      = findRes(projectRoot);
+            File appSrc      = findSrc(projectRoot);
 
-            if (!appManifest.exists()) return fail(log, "AndroidManifest.xml not found");
-            if (!appRes.exists())      return fail(log, "res/ folder not found");
-            if (!appSrc.exists())      return fail(log, "src/ folder not found");
+            if (appManifest == null) return fail(log, "AndroidManifest.xml not found in project");
+            if (appRes == null)      return fail(log, "res/ folder not found in project");
+            if (appSrc == null)      return fail(log, "src/ folder not found in project");
 
             sourceRoots.add(appSrc);
             resRoots.add(appRes);
+
+            // Also include sibling sources (e.g. java/ next to src/)
+            File parent = appManifest.getParentFile();
+            if (parent != null) {
+                File sibSrc = new File(parent, "src");
+                if (!sibSrc.exists()) sibSrc = new File(parent, "java");
+                if (sibSrc.exists() && !sibSrc.equals(appSrc)) sourceRoots.add(sibSrc);
+
+                File sibRes = new File(parent, "res");
+                if (sibRes.exists() && !sibRes.equals(appRes)) resRoots.add(sibRes);
+            }
 
             File settingsGradle = new File(projectRoot, "settings.gradle");
             if (settingsGradle.exists()) {
@@ -90,13 +99,12 @@ public class ApkBuilder {
                         File modDir = new File(projectRoot, modName);
                         if (!modDir.exists()) continue;
 
-                        File modRes = new File(modDir, "res");
-                        File modSrc = new File(modDir, "src");
-                        if (!modSrc.exists()) modSrc = new File(modDir, "java");
-                        if (!modSrc.exists()) modSrc = new File(modDir, "src/main/java");
+                        File modManifest = findManifest(modDir);
+                        File modRes = findRes(modDir);
+                        File modSrc = findSrc(modDir);
 
-                        if (modSrc.exists()) sourceRoots.add(modSrc);
-                        if (modRes.exists()) resRoots.add(modRes);
+                        if (modSrc != null) sourceRoots.add(modSrc);
+                        if (modRes != null) resRoots.add(modRes);
 
                         collectDeps(new File(modDir, "libs"), jarDeps, aarDeps);
                     }
@@ -292,6 +300,47 @@ public class ApkBuilder {
             log.append("ERROR: ").append(causeChain(t)).append('\n');
             return new Result(false, null, log.toString());
         }
+    }
+
+    // ---- project layout helpers ----
+
+    private File findManifest(File root) {
+        if (root == null) return null;
+        File m = new File(root, "AndroidManifest.xml");
+        if (m.isFile()) return m;
+        File m1 = new File(root, "app/src/main/AndroidManifest.xml");
+        if (m1.isFile()) return m1;
+        File m2 = new File(root, "src/main/AndroidManifest.xml");
+        if (m2.isFile()) return m2;
+        File m3 = new File(root, "src/AndroidManifest.xml");
+        if (m3.isFile()) return m3;
+        return null;
+    }
+
+    private File findRes(File root) {
+        if (root == null) return null;
+        File r = new File(root, "res");
+        if (r.isDirectory()) return r;
+        File r1 = new File(root, "app/src/main/res");
+        if (r1.isDirectory()) return r1;
+        File r2 = new File(root, "src/main/res");
+        if (r2.isDirectory()) return r2;
+        File r3 = new File(root, "src/res");
+        if (r3.isDirectory()) return r3;
+        return null;
+    }
+
+    private File findSrc(File root) {
+        if (root == null) return null;
+        File s = new File(root, "src");
+        if (s.isDirectory()) return s;
+        File s1 = new File(root, "java");
+        if (s1.isDirectory()) return s1;
+        File s2 = new File(root, "app/src/main/java");
+        if (s2.isDirectory()) return s2;
+        File s3 = new File(root, "src/main/java");
+        if (s3.isDirectory()) return s3;
+        return null;
     }
 
     private boolean hasKtFiles(File dir) {
@@ -566,17 +615,42 @@ public class ApkBuilder {
         }
     }
 
+    /**
+     * Rewrites the source manifest:
+     * - Copies the original <manifest ... package="..."> and keeps the package attr.
+     * - Removes any existing <uses-sdk .../>.
+     * - Injects a fresh <uses-sdk> using the requested min/target SDK values.
+     */
     private void patchManifest(File in, File out, int minSdk, int targetSdk) throws Exception {
         String xml = readFile(in);
-        xml = xml.replaceAll("<uses-sdk[^/]*/>", "");
+
+        // Extract package="..."
+        String pkg = "";
+        Matcher pm = Pattern.compile("package\\s*=\\s*\"([^\"]+)\"").matcher(xml);
+        if (pm.find()) pkg = pm.group(1);
+
+        // Strip existing uses-sdk
+        xml = xml.replaceAll("<uses-sdk[^>]*/>", "");
         xml = xml.replaceAll("<uses-sdk.*?</uses-sdk>", "");
+
+        // Strip applicationId if any (not valid in manifest)
+        xml = xml.replaceAll("android:applicationId\\s*=\\s*\"[^\"]*\"", "");
 
         String usesSdk = "<uses-sdk android:minSdkVersion=\"" + minSdk
             + "\" android:targetSdkVersion=\"" + targetSdk + "\" />\n    ";
+
+        // Insert uses-sdk right after <manifest ...>
         int mStart = xml.indexOf("<manifest");
         int mEnd = xml.indexOf('>', mStart);
-        if (mEnd > 0) {
-            xml = xml.substring(0, mEnd + 1) + "\n    " + usesSdk + xml.substring(mEnd + 1);
+        if (mStart >= 0 && mEnd > 0) {
+            String head = xml.substring(0, mEnd + 1);
+            String tail = xml.substring(mEnd + 1);
+
+            // Make sure package is present
+            if (pkg != null && pkg.length() > 0 && !head.contains("package=")) {
+                head = head.replaceFirst("<manifest", "<manifest package=\"" + pkg + "\"");
+            }
+            xml = head + "\n    " + usesSdk + tail;
         }
 
         FileOutputStream fos = new FileOutputStream(out);
