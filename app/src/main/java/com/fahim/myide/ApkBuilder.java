@@ -58,7 +58,8 @@ public class ApkBuilder {
             // ===== DEBUG: dump aapt2 link --help =====
             try {
                 String aapt2Path = ctx.getApplicationInfo().nativeLibraryDir + "/libaapt2.so";
-                File dbg = new File(ctx.getExternalFilesDir(null), "aapt2_help.txt");
+                File dbg = new File(Environment.getExternalStoragePublicDirectory(
+                        Environment.DIRECTORY_DOWNLOADS), "aapt2_help.txt");
                 StringBuilder dbgLog = new StringBuilder();
                 dbgLog.append("tried path: ").append(aapt2Path).append('\n');
                 dbgLog.append("exists: ").append(new File(aapt2Path).exists()).append('\n');
@@ -80,7 +81,8 @@ public class ApkBuilder {
                 say("aapt2 help at " + dbg.getAbsolutePath());
             } catch (Throwable t) {
                 try {
-                    File dbg = new File(ctx.getExternalFilesDir(null), "aapt2_help.txt");
+                    File dbg = new File(Environment.getExternalStoragePublicDirectory(
+                            Environment.DIRECTORY_DOWNLOADS), "aapt2_help.txt");
                     FileOutputStream fo = new FileOutputStream(dbg);
                     fo.write(("ERROR: " + t + "\n").getBytes("UTF-8"));
                     fo.close();
