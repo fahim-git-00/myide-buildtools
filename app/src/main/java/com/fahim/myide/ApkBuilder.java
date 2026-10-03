@@ -317,7 +317,7 @@ public class ApkBuilder {
             say("Compiling Java (ECJ)...");
             compileJava(androidJar, ecjFull, ecjResDir, sourceRoots, genDir, classesDir, jarDeps);
 
-            say("Dexing (R8)...");
+            say("Dexing (D8)...");
             File dexDir = new File(workDir, "dex");
             dexDir.mkdirs();
             compileDex(androidJar, d8Zip, classesDir, dexDir, jarDeps, minSdk);
@@ -605,16 +605,6 @@ public class ApkBuilder {
         }
     }
 
-    private File noShrinkRules() throws Exception {
-        File f = new File(ctx.getFilesDir(), "r8-rules.pro");
-        if (!f.exists()) {
-            FileOutputStream fos = new FileOutputStream(f);
-            fos.write(("-dontshrink\n-dontoptimize\n-dontobfuscate\n").getBytes("UTF-8"));
-            fos.close();
-        }
-        return f;
-    }
-
     private void compileDex(File androidJar, File d8Zip, File classesDir,
                             File outputDir, List<File> extraJars, int minSdk) throws Exception {
         List<File> classFiles = new ArrayList<File>();
@@ -637,13 +627,10 @@ public class ApkBuilder {
                 null,
                 ctx.getClassLoader());
 
-            Class<?> d8Class = loader.loadClass("com.android.tools.r8.R8");
+            Class<?> d8Class = loader.loadClass("com.android.tools.r8.D8");
             Method main = d8Class.getMethod("main", String[].class);
 
             List<String> args = new ArrayList<String>();
-            args.add("--release");
-            args.add("--pg-conf");
-            args.add(noShrinkRules().getAbsolutePath());
             args.add("--output");   args.add(outputDir.getAbsolutePath());
             args.add("--min-api");  args.add(String.valueOf(minSdk));
             args.add("--lib");      args.add(androidJar.getAbsolutePath());
@@ -659,7 +646,7 @@ public class ApkBuilder {
             try {
                 main.invoke(null, (Object) args.toArray(new String[0]));
             } catch (InvocationTargetException ite) {
-                String msg = "R8 error: " + causeChain(ite)
+                String msg = "D8 error: " + causeChain(ite)
                     + "\n--- stdout ---\n" + d8Out.toString()
                     + "\n--- stderr ---\n" + d8Err.toString();
                 say(msg);
@@ -678,7 +665,7 @@ public class ApkBuilder {
             }
 
             if (!anyDex) {
-                String msg = "R8 produced no .dex files.\n"
+                String msg = "D8 produced no .dex files.\n"
                     + "--- stdout ---\n" + d8Out.toString()
                     + "\n--- stderr ---\n" + d8Err.toString();
                 say(msg);
