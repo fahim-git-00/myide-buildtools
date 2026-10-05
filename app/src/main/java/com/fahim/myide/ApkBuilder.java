@@ -277,8 +277,8 @@ public class ApkBuilder {
             File classesDir = new File(workDir, "classes");
             classesDir.mkdirs();
 
+            // Kotlin disabled — no local kotlinc in APK, use remote if needed.
             boolean hasKotlin = false;
-            for (File src : sourceRoots) if (hasKtFiles(src)) { hasKotlin = true; break; }
 
             if (hasKotlin) {
                 String mode = ctx.getSharedPreferences("kotlin", Context.MODE_PRIVATE)
@@ -481,7 +481,6 @@ public class ApkBuilder {
         File parent = out.getParentFile();
         if (parent != null && !parent.exists()) parent.mkdirs();
 
-        // Always overwrite — avoids stale cache from old APK versions.
         if (out.exists()) out.delete();
 
         InputStream in = ctx.getAssets().open(name);
